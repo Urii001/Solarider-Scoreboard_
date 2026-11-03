@@ -1,0 +1,1323 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SolaRider Team — Scoreboard</title>
+<script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
+<style>html,body,#root{margin:0;padding:0;background:#0A0A0A;}</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+// Almacenamiento persistente (equivalente a window.storage) usando localStorage
+if (!window.storage) {
+  window.storage = {
+    get: async (k) => { try { const v = localStorage.getItem(k); return v === null ? null : { key: k, value: v }; } catch (e) { return null; } },
+    set: async (k, v) => { try { localStorage.setItem(k, v); } catch (e) {} return { key: k, value: v }; }
+  };
+}
+</script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useCallback, useRef } = React;
+// Recharts solo lo usan componentes que la app no renderiza actualmente
+const { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } = window.Recharts || {};
+
+
+const LOGO_URL = "";
+
+function SolariderLogo({ height = 60, style: st = {} }) {
+  return <img src={LOGO_URL} alt="SolaRider Team" height={height} style={{ display:"block", objectFit:"contain", ...st }}/>;
+}
+const RED = "#CC0000";
+const ADMIN_PASS = "solarider2024";
+const WA_NUMBER = "34600000000"; // Cambiar por el número real
+const RESERVA_URL = "https://solariderteam.playoffinformatica.com/preinscripcion/";
+
+const IMGS = {
+  hero:    "https://images.unsplash.com/photo-1544191696-102dbdaeeaa0?w=1920&q=85&auto=format&fit=crop",
+  grupos:  "https://images.unsplash.com/photo-1571068316344-75bc76f77890?w=1920&q=80&auto=format&fit=crop",
+  ranking: "https://images.unsplash.com/photo-1541625602703-745bacef9699?w=1920&q=80&auto=format&fit=crop",
+  riders:  "https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=1920&q=80&auto=format&fit=crop",
+  logros:  "https://images.unsplash.com/photo-1606229365485-93a3b8ee0385?w=1920&q=80&auto=format&fit=crop",
+  comp:    "https://images.unsplash.com/photo-1517649763962-0c623066013b?w=1920&q=80&auto=format&fit=crop",
+  tienda:  "https://images.unsplash.com/photo-1556821840-3a63f15732ce?w=1920&q=80&auto=format&fit=crop",
+  formacion:"https://images.unsplash.com/photo-1434596922112-19c563067271?w=1920&q=80&auto=format&fit=crop",
+};
+
+const GROUPS = [
+  { id:"adultos", name:"Adultos",        age:"+18",   color:"#CC0000" },
+  { id:"cadete",  name:"Cadete Juniors", age:"13-17", color:"#FF4400" },
+  { id:"team",    name:"Team Riders",    age:"8-11",  color:"#FF7700" },
+  { id:"mini",    name:"Mini Riders",    age:"4-7",   color:"#FFAA00" },
+  { id:"peque",   name:"Peque Riders",   age:"2-4",   color:"#FFD000" },
+];
+
+const SKILLS = [
+  { id:"curvas",    label:"Curvas",    icon:"↩" },
+  { id:"saltos",    label:"Saltos",    icon:"↑" },
+  { id:"descenso",  label:"Descenso",  icon:"⬇" },
+  { id:"tecnica",   label:"Técnica",   icon:"⚙" },
+  { id:"pedaleo",   label:"Pedaleo",   icon:"↻" },
+  { id:"estatica",  label:"Estática",  icon:"◎" },
+  { id:"frenada",   label:"Frenada",   icon:"◉" },
+  { id:"posicion",  label:"Posición",  icon:"▲" },
+  { id:"vision",    label:"Visión",    icon:"◈" },
+  { id:"confianza", label:"Confianza", icon:"★" },
+];
+
+/* ── Achievements ── */
+const ACHIEVEMENTS = [
+  { id:"primer_pedaleo", name:"Primer Pedaleo",  icon:"🚵", desc:"Completa tu primera sesión",          pts:50,  check:r => (r.sessions?.length??0) >= 1 },
+  { id:"cinco_rutas",    name:"5 Sesiones",       icon:"🔥", desc:"Acumula 5 sesiones de entrenamiento", pts:100, check:r => (r.sessions?.length??0) >= 5 },
+  { id:"diez_rutas",     name:"10 Sesiones",      icon:"💪", desc:"10 sesiones completadas",             pts:200, check:r => (r.sessions?.length??0) >= 10 },
+  { id:"tecnico_7",      name:"Técnico",           icon:"⚙", desc:"Alcanza una media de 7.0",            pts:150, check:r => r.sessions?.length && avgScore(r.sessions.slice(-1)[0].scores) >= 7 },
+  { id:"expert_8",       name:"Expert Rider",      icon:"⭐", desc:"Alcanza una media de 8.0",            pts:300, check:r => r.sessions?.length && avgScore(r.sessions.slice(-1)[0].scores) >= 8 },
+  { id:"elite_9",        name:"Elite",             icon:"🏆", desc:"Alcanza una media de 9.0",            pts:500, check:r => r.sessions?.length && avgScore(r.sessions.slice(-1)[0].scores) >= 9 },
+  { id:"air_time",       name:"Air Time",          icon:"🪂", desc:"Saltos con puntuación 9 o más",       pts:200, check:r => r.sessions?.length && (r.sessions.slice(-1)[0].scores.saltos??0) >= 9 },
+  { id:"speed_demon",    name:"Speed Demon",       icon:"💨", desc:"Descenso con puntuación 9 o más",     pts:200, check:r => r.sessions?.length && (r.sessions.slice(-1)[0].scores.descenso??0) >= 9 },
+  { id:"cornering",      name:"Cornering King",    icon:"↩", desc:"Curvas con puntuación 9 o más",       pts:200, check:r => r.sessions?.length && (r.sessions.slice(-1)[0].scores.curvas??0) >= 9 },
+  { id:"progreso",       name:"En Progreso",       icon:"📈", desc:"Mejora tu media en 1.5 puntos",       pts:250, check:r => r.sessions?.length > 1 && avgScore(r.sessions.slice(-1)[0].scores) - avgScore(r.sessions.slice(-2)[0].scores) >= 1.5 },
+  { id:"equilibrio",     name:"Equilibrista",      icon:"◎", desc:"Estática con puntuación 9 o más",     pts:150, check:r => r.sessions?.length && (r.sessions.slice(-1)[0].scores.estatica??0) >= 9 },
+  { id:"confiado",       name:"Sin Miedo",         icon:"🦁", desc:"Confianza con puntuación 9 o más",    pts:150, check:r => r.sessions?.length && (r.sessions.slice(-1)[0].scores.confianza??0) >= 9 },
+];
+
+/* ── Competitions / Missions ── */
+const SEASON_RACES = [
+  { id:"rc1", name:"Rocallaura Vol. 1",          date:"Mar 2025", type:"boss",   points:500, color:"#FF0000", icon:"💀", objectives:["Completar la carrera","Top 20 general","Sin abandono"] },
+  { id:"rc2", name:"Copa Catalana Enduro R1",    date:"Abr 2025", type:"normal", points:200, color:RED,       icon:"🏁", objectives:["Participar","Completar 2 especiales","Top 15 categoría"] },
+  { id:"rc3", name:"Copa Bucardo 2025",          date:"Abr 2025", type:"normal", points:200, color:RED,       icon:"🏁", objectives:["Participar","Top 10 categoría","Sin penalizaciones"] },
+  { id:"rc4", name:"Campeonato de Cataluña",     date:"May 2025", type:"boss",   points:600, color:"#FF0000", icon:"💀", objectives:["Completar la carrera","Top 10 categoría","Podio"] },
+  { id:"rc5", name:"Solarider Tour 2025",        date:"Jun 2025", type:"normal", points:300, color:RED,       icon:"🏁", objectives:["Participar","Completar recorrido","Mejor tiempo personal"] },
+  { id:"rc6", name:"Open de España Enduro",      date:"Sep 2025", type:"boss",   points:700, color:"#FF0000", icon:"💀", objectives:["Clasificarse","Completar la carrera","Representar al equipo"] },
+  { id:"rc7", name:"Copa del Mundo Enduro",      date:"Oct 2025", type:"final",  points:1000,color:"#FFD700", icon:"👑", objectives:["Clasificarse","Completar todas las especiales","Top nacional"] },
+];
+
+/* ── Shop ── */
+const SHOP_ITEMS = [
+  { id:"s1", name:"Camiseta SolaRider",    price:35,  img:"https://images.unsplash.com/photo-1521572163474-6864f9cf17ab?w=400&q=80", tag:"Ropa" },
+  { id:"s2", name:"Gorra Team Edition",   price:25,  img:"https://images.unsplash.com/photo-1588850561407-ed78c282e89b?w=400&q=80", tag:"Accesorios" },
+  { id:"s3", name:"Maillot Equipo 2025",  price:65,  img:"https://images.unsplash.com/photo-1547447134-cd3f5c716030?w=400&q=80", tag:"Ropa" },
+  { id:"s4", name:"Guantes Enduro Pro",   price:45,  img:"https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400&q=80", tag:"Protecciones" },
+  { id:"s5", name:"Pack Stickers",        price:8,   img:"https://images.unsplash.com/photo-1509695507497-903c140c43b0?w=400&q=80", tag:"Extras" },
+  { id:"s6", name:"Botella SolaRider",    price:18,  img:"https://images.unsplash.com/photo-1602143407151-7111542de6e8?w=400&q=80", tag:"Extras" },
+];
+
+/* ── Formación ── */
+const RECURSOS = [
+  { id:"f1", type:"pdf",   cat:"Técnica",  title:"Técnica de Curvas Avanzada",       desc:"Aprende a leer la curva, punto de frenada y ápex.",         icon:"📄", color:"#CC0000" },
+  { id:"f2", type:"pdf",   cat:"Técnica",  title:"Posición Correcta en Descenso",    desc:"Postura, peso y centro de gravedad en bajadas técnicas.",   icon:"📄", color:"#CC0000" },
+  { id:"f3", type:"pdf",   cat:"Físico",   title:"Entrenamiento Físico para Enduro", desc:"Plan de 8 semanas de condición física específica.",         icon:"📄", color:"#FF7700" },
+  { id:"f4", type:"pdf",   cat:"Mental",   title:"Gestión del Miedo y Confianza",    desc:"Psicología del deporte aplicada al MTB de enduro.",         icon:"📄", color:"#FFAA00" },
+  { id:"f5", type:"pdf",   cat:"Técnica",  title:"Lectura de Pista y Visión",        desc:"Cómo anticipar el terreno y elegir la línea óptima.",       icon:"📄", color:"#CC0000" },
+  { id:"f6", type:"video", cat:"Técnica",  title:"Sesión: Saltos Básicos",           desc:"Vídeo técnico: approach, despegue y aterrizaje.",           icon:"🎬", color:"#FF4400" },
+  { id:"f7", type:"video", cat:"Técnica",  title:"Análisis de Descenso Real",        desc:"Análisis frame a frame de una bajada de competición.",      icon:"🎬", color:"#FF4400" },
+  { id:"f8", type:"tip",   cat:"Mental",   title:"10 Consejos Pre-Carrera",          desc:"Rutinas mentales y físicas antes de una competición.",      icon:"💡", color:"#FFCC00" },
+];
+
+/* ─────────────── UTILS ─────────────── */
+function riderAge(rider) {
+  if (rider.birthYear) return new Date().getFullYear() - parseInt(rider.birthYear);
+  return rider.age ? parseInt(rider.age) : null;
+}
+
+function avgScore(scores) {
+  if (!scores) return 0;
+  return SKILLS.reduce((a,s) => a+(scores[s.id]??0), 0) / SKILLS.length;
+}
+function scoreColor(v) {
+  if (v >= 8) return "#00E676";
+  if (v >= 6) return "#FFD600";
+  if (v >= 4) return "#FF6D00";
+  return "#FF1744";
+}
+function riderPoints(rider) {
+  const achPts = ACHIEVEMENTS.filter(a => a.check(rider)).reduce((s,a) => s+a.pts, 0);
+  const compPts = (rider.compResults||[]).reduce((s,c) => s+c.pts, 0);
+  const bonusPts = (rider.bonusPoints||[]).reduce((s,b) => s+b.pts, 0);
+  return achPts + compPts + bonusPts;
+}
+function riderLevel(pts) {
+  if (pts >= 1500) return { name:"ELITE", color:"#FFD700", next:null };
+  if (pts >= 900)  return { name:"EXPERT", color:"#CC0000", next:1500 };
+  if (pts >= 450)  return { name:"AVANZADO", color:"#FF6600", next:900 };
+  if (pts >= 150)  return { name:"INTERMEDIO", color:"#FFAA00", next:450 };
+  return { name:"NOVATO", color:"#888", next:150 };
+}
+
+function useStorage(key, def) {
+  const [val, setVal] = useState(def);
+  const [ready, setReady] = useState(false);
+  useEffect(() => {
+    (async () => {
+      try { const r = await window.storage.get(key); if (r?.value) setVal(JSON.parse(r.value)); } catch {}
+      setReady(true);
+    })();
+  }, []);
+  const save = useCallback(async (v) => {
+    setVal(v);
+    try { await window.storage.set(key, JSON.stringify(v)); } catch {};
+  }, []);
+  return [val, save, ready];
+}
+
+/* ─────────────── MINI COMPONENTS ─────────────── */
+function Ring({ value, size=90, color }) {
+  const r=34, c=2*Math.PI*r, pct=(value/10)*c, col=color||scoreColor(value);
+  return (
+    <svg width={size} height={size} viewBox="0 0 80 80">
+      <circle cx={40} cy={40} r={r} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={5}/>
+      <circle cx={40} cy={40} r={r} fill="none" stroke={col} strokeWidth={5} strokeDasharray={`${pct} ${c}`} strokeDashoffset={c/4} strokeLinecap="round" style={{transition:"stroke-dasharray 1s ease"}}/>
+      <text x={40} y={38} textAnchor="middle" dominantBaseline="middle" fill="#fff" fontSize={17} fontWeight={900} fontFamily="'Barlow Condensed',sans-serif">{value.toFixed(1)}</text>
+      <text x={40} y={54} textAnchor="middle" dominantBaseline="middle" fill={col} fontSize={8} fontFamily="'Barlow',sans-serif">MEDIA</text>
+    </svg>
+  );
+}
+
+function Bar({ value, color, label }) {
+  const [w, setW] = useState(0);
+  useEffect(() => { const t=setTimeout(()=>setW(value*10),150); return ()=>clearTimeout(t); }, [value]);
+  return (
+    <div style={{marginBottom:10}}>
+      <div style={{display:"flex",justifyContent:"space-between",marginBottom:5}}>
+        <span style={{fontSize:12,color:"rgba(255,255,255,0.6)"}}>{label}</span>
+        <span style={{fontSize:12,fontWeight:700,color:color||scoreColor(value)}}>{value}</span>
+      </div>
+      <div style={{height:4,background:"rgba(255,255,255,0.08)",borderRadius:4,overflow:"hidden"}}>
+        <div style={{height:"100%",width:`${w}%`,background:color||scoreColor(value),borderRadius:4,transition:"width 0.9s ease"}}/>
+      </div>
+    </div>
+  );
+}
+
+function Medal({rank}) {
+  const m={1:"🥇",2:"🥈",3:"🥉"};
+  return m[rank] ? <span style={{fontSize:20,flexShrink:0}}>{m[rank]}</span>
+    : <span style={{fontSize:13,color:"rgba(255,255,255,0.25)",fontWeight:800,minWidth:28,textAlign:"center",flexShrink:0}}>#{rank}</span>;
+}
+
+function SectionHeader({ label, title }) {
+  return (
+    <div style={{textAlign:"center",marginBottom:52}}>
+      <div style={{fontSize:11,color:RED,letterSpacing:"0.26em",textTransform:"uppercase",marginBottom:10,fontWeight:600}}>{label}</div>
+      <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:"clamp(36px,5vw,64px)",fontWeight:900,textTransform:"uppercase",letterSpacing:"-0.01em"}}>{title}</div>
+    </div>
+  );
+}
+
+function BgSection({ img, children, id, style:st={} }) {
+  return (
+    <section id={id} style={{position:"relative",padding:"80px 5%",overflow:"hidden",...st}}>
+      <div style={{position:"absolute",inset:0,backgroundImage:`url(${img})`,backgroundSize:"cover",backgroundPosition:"center",filter:"brightness(0.18) saturate(0.5)"}}/>
+      <div style={{position:"absolute",inset:0,background:"linear-gradient(180deg,rgba(0,0,0,0.8) 0%,rgba(10,0,0,0.92) 100%)"}}/>
+      <div style={{position:"relative",zIndex:2,maxWidth:1200,margin:"0 auto"}}>{children}</div>
+    </section>
+  );
+}
+
+/* ─────────────── PROGRESS CHART ─────────────── */
+function ProgressChart({ rider, color }) {
+  if (!rider.sessions?.length) return <div style={{textAlign:"center",padding:"40px",color:"rgba(255,255,255,0.3)"}}>Sin sesiones para mostrar la progresión</div>;
+  const data = rider.sessions.map((s,i) => ({
+    name:`S${i+1}`,
+    Media: parseFloat(avgScore(s.scores).toFixed(2)),
+    Curvas: s.scores.curvas??0,
+    Descenso: s.scores.descenso??0,
+    Saltos: s.scores.saltos??0,
+  }));
+  return (
+    <div style={{background:"rgba(0,0,0,0.4)",borderRadius:14,padding:"24px",border:"1px solid rgba(255,255,255,0.07)"}}>
+      <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:16}}>Progresión por sesiones</div>
+      <ResponsiveContainer width="100%" height={200}>
+        <LineChart data={data} margin={{top:5,right:10,bottom:0,left:-20}}>
+          <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)"/>
+          <XAxis dataKey="name" stroke="rgba(255,255,255,0.2)" fontSize={11} tick={{fill:"rgba(255,255,255,0.4)"}}/>
+          <YAxis domain={[0,10]} stroke="rgba(255,255,255,0.2)" fontSize={11} tick={{fill:"rgba(255,255,255,0.4)"}}/>
+          <Tooltip contentStyle={{background:"#1A0000",border:`1px solid ${color}`,borderRadius:8,fontSize:12}} labelStyle={{color:"#fff"}} itemStyle={{color:"rgba(255,255,255,0.7)"}}/>
+          <Line type="monotone" dataKey="Media" stroke={color} strokeWidth={3} dot={{fill:color,r:5}} activeDot={{r:7}}/>
+          <Line type="monotone" dataKey="Curvas" stroke="#FF9900" strokeWidth={1.5} dot={false} strokeDasharray="4 2"/>
+          <Line type="monotone" dataKey="Descenso" stroke="#00C8FF" strokeWidth={1.5} dot={false} strokeDasharray="4 2"/>
+          <Line type="monotone" dataKey="Saltos" stroke="#00E676" strokeWidth={1.5} dot={false} strokeDasharray="4 2"/>
+        </LineChart>
+      </ResponsiveContainer>
+      <div style={{display:"flex",gap:16,justifyContent:"center",marginTop:12,flexWrap:"wrap"}}>
+        {[["Media",color],["Curvas","#FF9900"],["Descenso","#00C8FF"],["Saltos","#00E676"]].map(([k,c])=>(
+          <div key={k} style={{display:"flex",alignItems:"center",gap:6}}>
+            <div style={{width:16,height:2,background:c,borderRadius:2}}/>
+            <span style={{fontSize:11,color:"rgba(255,255,255,0.5)"}}>{k}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/* ─────────────── RADAR SVG ─────────────── */
+function RadarSVG({ scores, color, size=200 }) {
+  const cx=size/2,cy=size/2,r=size*0.35,n=SKILLS.length;
+  const angle=i=>(Math.PI*2*i/n)-Math.PI/2;
+  const pt=(i,f)=>({x:cx+Math.cos(angle(i))*r*f,y:cy+Math.sin(angle(i))*r*f});
+  const grid=f=>SKILLS.map((_,i)=>pt(i,f)).map(p=>`${p.x},${p.y}`).join(" ");
+  const poly=SKILLS.map((s,i)=>pt(i,(scores?.[s.id]??0)/10)).map(p=>`${p.x},${p.y}`).join(" ");
+  return (
+    <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+      {[.25,.5,.75,1].map(f=><polygon key={f} points={grid(f)} fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth={1}/>)}
+      {SKILLS.map((_,i)=>{const a=pt(i,1);return<line key={i} x1={cx} y1={cy} x2={a.x} y2={a.y} stroke="rgba(255,255,255,0.08)" strokeWidth={1}/>;} )}
+      <polygon points={poly} fill={`${color}28`} stroke={color} strokeWidth={2.5}/>
+      {SKILLS.map((s,i)=>{const a=pt(i,(scores?.[s.id]??0)/10);return<circle key={i} cx={a.x} cy={a.y} r={4} fill={color}/>;} )}
+      {SKILLS.map((s,i)=>{const l=pt(i,1.24);return<text key={i} x={l.x} y={l.y} textAnchor="middle" dominantBaseline="middle" fontSize={9} fill="rgba(255,255,255,0.45)" fontFamily="'Barlow',sans-serif">{s.icon}</text>;} )}
+    </svg>
+  );
+}
+
+/* ─────────────── CSS ─────────────── */
+const CSS = `
+@import url('https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@400;700;900&family=Barlow:wght@400;500;600;700&display=swap');
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent;}
+html{scroll-behavior:smooth;}
+body{background:#0A0A0A;color:#fff;font-family:'Barlow',sans-serif;}
+::-webkit-scrollbar{width:3px;}::-webkit-scrollbar-thumb{background:#CC000050;border-radius:3px;}
+input,textarea,select{background:rgba(255,255,255,0.07);border:1px solid rgba(255,255,255,0.12);border-radius:8px;color:#fff;padding:10px 14px;font-family:'Barlow',sans-serif;font-size:14px;outline:none;width:100%;transition:border 0.2s;}
+input:focus,textarea:focus,select:focus{border-color:#CC0000;}
+select option{background:#1A0000;}
+button{cursor:pointer;font-family:'Barlow',sans-serif;}
+@keyframes fadeUp{from{opacity:0;transform:translateY(36px);}to{opacity:1;transform:translateY(0);}}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:0.3;}}
+@keyframes spin{to{transform:rotate(360deg);}}
+@keyframes sheetUp{from{transform:translateY(100%);}to{transform:translateY(0);}}
+@keyframes glow{0%,100%{box-shadow:0 0 20px rgba(204,0,0,0.3);}50%{box-shadow:0 0 40px rgba(204,0,0,0.6);}}
+@keyframes bounce{0%,100%{transform:translateY(0);}50%{transform:translateY(-6px);}}
+.fadeUp{animation:fadeUp 0.6s ease both;}
+`;
+
+/* ═══════════════════════════════════════ MAIN ═══════════════════════════════════════ */
+function App() {
+  const [riders, setRiders, ready] = useStorage("sr_v6", [
+    {id:"r1",name:"Marc Puig",   groupId:"adultos",age:28,sessions:[{id:"s1",date:"01/03/2025",scores:{curvas:7,saltos:6,descenso:8,tecnica:7,pedaleo:6,estatica:7,frenada:7,posicion:7,vision:7,confianza:8},note:""},{id:"s2",date:"15/04/2025",scores:{curvas:8,saltos:8,descenso:9,tecnica:8,pedaleo:7,estatica:8,frenada:8,posicion:9,vision:8,confianza:9},note:"Excelente bajada"}],compResults:[{raceId:"rc1",pts:400,objs:["Completar la carrera","Sin abandono"]},{raceId:"rc2",pts:150,objs:["Participar"]}]},
+    {id:"r2",name:"Laia Ferrer", groupId:"adultos",age:24,sessions:[{id:"s1",date:"01/03/2025",scores:{curvas:6,saltos:6,descenso:7,tecnica:8,pedaleo:7,estatica:6,frenada:7,posicion:7,vision:8,confianza:7},note:""},{id:"s2",date:"14/05/2025",scores:{curvas:8,saltos:7,descenso:8,tecnica:9,pedaleo:8,estatica:7,frenada:8,posicion:8,vision:9,confianza:8},note:"Gran técnica"}],compResults:[{raceId:"rc1",pts:300,objs:["Completar la carrera"]}]},
+    {id:"r3",name:"Jordi Casas", groupId:"cadete", age:16,sessions:[{id:"s1",date:"10/03/2025",scores:{curvas:5,saltos:7,descenso:6,tecnica:6,pedaleo:6,estatica:5,frenada:6,posicion:6,vision:6,confianza:8},note:""},{id:"s2",date:"14/05/2025",scores:{curvas:7,saltos:9,descenso:7,tecnica:7,pedaleo:8,estatica:6,frenada:7,posicion:7,vision:7,confianza:9},note:"Saltos increíbles"}],compResults:[]},
+    {id:"r4",name:"Pau Vidal",   groupId:"cadete", age:15,sessions:[{id:"s1",date:"12/05/2025",scores:{curvas:8,saltos:7,descenso:8,tecnica:7,pedaleo:7,estatica:8,frenada:8,posicion:8,vision:7,confianza:7},note:""}],compResults:[]},
+    {id:"r5",name:"Arnau Serra", groupId:"team",   age:10,sessions:[{id:"s1",date:"14/05/2025",scores:{curvas:6,saltos:6,descenso:7,tecnica:6,pedaleo:7,estatica:7,frenada:6,posicion:6,vision:6,confianza:7},note:"Buen progreso"}],compResults:[]},
+    {id:"r6",name:"Marta Gil",   groupId:"team",   age:9, sessions:[{id:"s1",date:"11/05/2025",scores:{curvas:7,saltos:5,descenso:6,tecnica:7,pedaleo:6,estatica:8,frenada:7,posicion:7,vision:6,confianza:6},note:"Muy constante"}],compResults:[]},
+    {id:"r7",name:"Roc Mas",     groupId:"mini",   age:6, sessions:[{id:"s1",date:"14/05/2025",scores:{curvas:5,saltos:4,descenso:5,tecnica:5,pedaleo:6,estatica:5,frenada:5,posicion:5,vision:5,confianza:6},note:""}],compResults:[]},
+    {id:"r8",name:"Biel Soler",  groupId:"peque",  age:3, sessions:[{id:"s1",date:"10/05/2025",scores:{curvas:4,saltos:3,descenso:4,tecnica:4,pedaleo:4,estatica:4,frenada:4,posicion:4,vision:3,confianza:5},note:"Primeros pasos"}],compResults:[]},
+  ]);
+  const [adminOpen, setAdminOpen] = useState(false);
+  const [adminAuthed, setAdminAuthed] = useState(false);
+  const [activeRider, setActiveRider] = useState(null);
+  const [activeGroup, setActiveGroup] = useState(null);
+  const riderObj = activeRider ? riders.find(r => r.id === activeRider) : null;
+  const groupObj = activeGroup ? GROUPS.find(g => g.id === activeGroup) : null;
+  const scrollTo = id => document.getElementById(id)?.scrollIntoView({behavior:"smooth"});
+
+  if (!ready) return (
+    <div style={{minHeight:"100vh",background:"#0A0A0A",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:24}}>
+      <style>{CSS}</style>
+      <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:72,fontWeight:900,letterSpacing:"-0.02em",animation:"pulse 1.5s infinite"}}>SOLA<span style={{color:"#CC0000"}}>RIDER</span></div>
+      <div style={{width:32,height:32,border:"3px solid #CC0000",borderTopColor:"transparent",borderRadius:"50%",animation:"spin 0.8s linear infinite"}}/>
+    </div>
+  );
+
+  return (
+    <div style={{minHeight:"100vh",background:"#0A0A0A",position:"relative"}}>
+      <style>{CSS}</style>
+
+      {/* ── HEADER ── */}
+      <header style={{position:"fixed",top:0,left:0,right:0,zIndex:100,background:"linear-gradient(to bottom,rgba(0,0,0,0.95) 0%,transparent 100%)",padding:"32px 5%",display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <div onClick={()=>window.scrollTo({top:0,behavior:"smooth"})} style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:900,letterSpacing:"-0.02em",color:"#fff",cursor:"pointer"}}>SOLA<span style={{color:RED}}>RIDER</span></div>
+        <nav style={{display:"flex",gap:6,flexWrap:"nowrap",alignItems:"center",overflow:"hidden",justifyContent:"flex-end"}}>
+          {[["grupos","Grupos"],["ranking","Ranking"],["logros","Logros"],["competicion","Competición"],["tienda","Tienda"],["formacion","Formación"]].map(([id,label])=>(
+            <button key={id} onClick={()=>scrollTo(id)}
+              style={{background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",border:"1px solid rgba(255,255,255,0.1)",borderRadius:20,padding:"5px 10px",color:"rgba(255,255,255,0.75)",fontSize:12,fontWeight:600,transition:"all 0.2s"}}
+              onMouseEnter={e=>{e.target.style.borderColor=RED;e.target.style.color="#fff";}}
+              onMouseLeave={e=>{e.target.style.borderColor="rgba(255,255,255,0.1)";e.target.style.color="rgba(255,255,255,0.75)";}}>
+              {label}
+            </button>
+          ))}
+          <a href={RESERVA_URL} target="_blank" rel="noreferrer"
+            style={{background:`linear-gradient(90deg,#CC0000,#990000)`,border:"none",borderRadius:20,padding:"6px 16px",color:"#fff",fontSize:12,fontWeight:800,letterSpacing:"0.05em",textDecoration:"none",display:"flex",alignItems:"center",gap:6,animation:"glow 3s infinite"}}>
+            📅 Reservar Clase
+          </a>
+          <button onClick={()=>setAdminOpen(true)} style={{background:"rgba(255,255,255,0.06)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:20,padding:"6px 14px",color:"rgba(255,255,255,0.5)",fontSize:12}}>⚙</button>
+        </nav>
+      </header>
+
+      {/* ══ HERO ══ */}
+      <HeroSection riders={riders} onScrollDown={()=>scrollTo("grupos")}/>
+
+      {/* ══ TOP 3 ══ */}
+      <section style={{padding:"80px 5%",background:"linear-gradient(180deg,#0A0A0A 0%,#120000 50%,#0A0A0A 100%)"}}>
+        <div style={{maxWidth:1200,margin:"0 auto"}}>
+          <SectionHeader label="Mejores Puntuaciones" title="Top Riders"/>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(280px,1fr))",gap:20}}>
+            {[...riders].filter(r=>r.sessions?.length).sort((a,b)=>avgScore(b.sessions.slice(-1)[0].scores)-avgScore(a.sessions.slice(-1)[0].scores)).slice(0,3).map((rider,i)=>{
+              const sc=rider.sessions.slice(-1)[0].scores,a=avgScore(sc),g=GROUPS.find(gr=>gr.id===rider.groupId),pts=riderPoints(rider),lv=riderLevel(pts);
+              return (
+                <div key={rider.id} onClick={()=>setActiveRider(rider.id)}
+                  style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${i===0?"rgba(204,0,0,0.5)":"rgba(255,255,255,0.07)"}`,borderRadius:16,padding:"28px 24px",cursor:"pointer",transition:"all 0.3s",position:"relative",overflow:"hidden",animation:`fadeUp 0.6s ${i*0.15}s ease both`}}
+                  onMouseEnter={e=>{e.currentTarget.style.background="rgba(204,0,0,0.07)";e.currentTarget.style.transform="translateY(-4px)";}}
+                  onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.03)";e.currentTarget.style.transform="translateY(0)";}}>
+                  {i===0&&<div style={{position:"absolute",top:0,left:0,right:0,height:3,background:"linear-gradient(90deg,#CC0000,#FF4400)"}}/>}
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <Medal rank={i+1}/>
+                      <div style={{background:`${lv.color}20`,border:`1px solid ${lv.color}40`,borderRadius:20,padding:"3px 10px",fontSize:10,fontWeight:700,color:lv.color}}>{lv.name}</div>
+                    </div>
+                    <Ring value={parseFloat(a.toFixed(1))} size={72} color={g.color}/>
+                  </div>
+                  <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:26,fontWeight:900,marginBottom:2}}>{rider.name}</div>
+                  <div style={{fontSize:12,color:g.color,marginBottom:4,fontWeight:600}}>{g.name}</div>
+                  <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:18}}>{pts} pts · {ACHIEVEMENTS.filter(ach=>ach.check(rider)).length} logros</div>
+                  {SKILLS.slice(0,5).map(sk=><Bar key={sk.id} value={sc[sk.id]??0} label={`${sk.icon} ${sk.label}`} color={g.color}/>)}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* ══ GRUPOS ══ */}
+      <BgSection img={IMGS.grupos} id="grupos">
+        <SectionHeader label="Escuela de Riders" title="Grupos"/>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:14}}>
+          {GROUPS.map((g,i)=>{
+            const gr=riders.filter(r=>r.groupId===g.id),avgs=gr.filter(r=>r.sessions?.length).map(r=>avgScore(r.sessions.slice(-1)[0].scores)),a=avgs.length?avgs.reduce((x,y)=>x+y,0)/avgs.length:0,top=gr.filter(r=>r.sessions?.length).sort((a,b)=>avgScore(b.sessions.slice(-1)[0].scores)-avgScore(a.sessions.slice(-1)[0].scores))[0];
+            return (
+              <div key={g.id} onClick={()=>setActiveGroup(g.id)} style={{background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",border:`1px solid ${g.color}28`,borderRadius:14,padding:"24px 18px",cursor:"pointer",transition:"all 0.3s",position:"relative",overflow:"hidden",animation:`fadeUp 0.5s ${i*0.08}s ease both`}}
+                onMouseEnter={e=>{e.currentTarget.style.background="rgba(204,0,0,0.1)";e.currentTarget.style.transform="translateY(-4px)";}}
+                onMouseLeave={e=>{e.currentTarget.style.background="rgba(0,0,0,0.6)";e.currentTarget.style.transform="translateY(0)";}}>
+                <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:g.color}}/>
+                <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:900,marginBottom:3}}>{g.name}</div>
+                <div style={{fontSize:11,color:g.color,marginBottom:18,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em"}}>{g.age} años · {gr.length} riders</div>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-end"}}>
+                  <div>{top&&<div style={{fontSize:12,color:"rgba(255,255,255,0.5)"}}>★ {top.name}</div>}</div>
+                  {a>0&&<div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:38,fontWeight:900,color:scoreColor(a),lineHeight:1}}>{a.toFixed(1)}</div>}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </BgSection>
+
+      {/* ══ RANKING ══ */}
+      <BgSection img={IMGS.ranking} id="ranking">
+        <SectionHeader label="Clasificación General" title="Ranking"/>
+        <RankingTable riders={riders} onRiderClick={setActiveRider}/>
+      </BgSection>
+
+      {/* ══ LOGROS ══ */}
+      <BgSection img={IMGS.logros} id="logros">
+        <SectionHeader label="Sistema de Premios" title="Logros & Niveles"/>
+        <LogrosSection riders={riders} onRiderClick={setActiveRider}/>
+      </BgSection>
+
+      {/* ══ COMPETICIÓN ══ */}
+      <BgSection img={IMGS.comp} id="competicion">
+        <SectionHeader label="Misiones de Temporada" title="Competición"/>
+        <CompeticionSection riders={riders}/>
+      </BgSection>
+
+      {/* ══ TIENDA ══ */}
+      <BgSection img={IMGS.tienda} id="tienda">
+        <SectionHeader label="Merchandising Oficial" title="Tienda"/>
+        <TiendaSection/>
+      </BgSection>
+
+      {/* ══ FORMACIÓN ══ */}
+      <BgSection img={IMGS.formacion} id="formacion">
+        <SectionHeader label="Material Técnico" title="Formación"/>
+        <FormacionSection/>
+      </BgSection>
+
+      {/* ══ RIDERS ══ */}
+      <section id="riders" style={{position:"relative",padding:"80px 5%",background:"#0A0A0A"}}>
+        <div style={{maxWidth:1200,margin:"0 auto"}}>
+          <SectionHeader label="Perfiles Completos" title="Riders"/>
+          <RiderGrid riders={riders} onRiderClick={setActiveRider}/>
+        </div>
+      </section>
+
+      {/* ══ FOOTER ══ */}
+      <footer style={{background:"#050505",borderTop:"1px solid rgba(255,255,255,0.06)",padding:"56px 5% 36px",textAlign:"center"}}>
+        {/* Logo */}
+        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:42,fontWeight:900,opacity:0.7,marginBottom:8,letterSpacing:"-0.02em"}}>SOLA<span style={{color:"#CC0000"}}>RIDER</span></div>
+        <div style={{fontSize:12,color:"rgba(255,255,255,0.25)",marginBottom:32,letterSpacing:"0.05em"}}>Escuela de Ciclismo Enduro y BTT · Barcelona</div>
+
+        {/* Redes sociales — solo iconos */}
+        <div style={{display:"flex",justifyContent:"center",gap:12,marginBottom:16}}>
+          {/* Instagram */}
+          <a href="https://www.instagram.com/solarider_team/" target="_blank" rel="noreferrer"
+            style={{width:46,height:46,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,transition:"all 0.2s"}}
+            onMouseEnter={e=>{e.currentTarget.style.background="rgba(225,48,108,0.15)";e.currentTarget.style.borderColor="rgba(225,48,108,0.4)";}}
+            onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.borderColor="rgba(255,255,255,0.08)";}}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs><linearGradient id="ig" x1="0" y1="24" x2="24" y2="0" gradientUnits="userSpaceOnUse"><stop stopColor="#F58529"/><stop offset="0.5" stopColor="#DD2A7B"/><stop offset="1" stopColor="#8134AF"/></linearGradient></defs>
+              <rect x="2" y="2" width="20" height="20" rx="5" stroke="url(#ig)" strokeWidth="2"/>
+              <circle cx="12" cy="12" r="4" stroke="url(#ig)" strokeWidth="2"/>
+              <circle cx="17.5" cy="6.5" r="1" fill="url(#ig)"/>
+            </svg>
+          </a>
+          {/* TikTok */}
+          <a href="https://www.tiktok.com/@solariderteam" target="_blank" rel="noreferrer"
+            style={{width:46,height:46,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,transition:"all 0.2s"}}
+            onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,255,255,0.1)";e.currentTarget.style.borderColor="rgba(255,255,255,0.3)";}}
+            onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.borderColor="rgba(255,255,255,0.08)";}}>
+            <svg width="18" height="20" viewBox="0 0 24 24" fill="white" xmlns="http://www.w3.org/2000/svg">
+              <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.3 6.3 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.79 1.54V6.78a4.85 4.85 0 01-1.02-.09z"/>
+            </svg>
+          </a>
+          {/* WhatsApp */}
+          <a href={`https://wa.me/${WA_NUMBER}`} target="_blank" rel="noreferrer"
+            style={{width:46,height:46,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,transition:"all 0.2s"}}
+            onMouseEnter={e=>{e.currentTarget.style.background="rgba(37,211,102,0.12)";e.currentTarget.style.borderColor="rgba(37,211,102,0.35)";}}
+            onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.borderColor="rgba(255,255,255,0.08)";}}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="#25D366" xmlns="http://www.w3.org/2000/svg">
+              <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347z"/>
+              <path d="M12 0C5.373 0 0 5.373 0 12c0 2.126.558 4.123 1.528 5.855L.057 23.857l6.174-1.448A11.945 11.945 0 0012 24c6.627 0 12-5.373 12-12S18.627 0 12 0zm0 21.818a9.818 9.818 0 01-5.006-1.373l-.359-.214-3.664.861.876-3.573-.234-.373A9.818 9.818 0 012.182 12C2.182 6.57 6.57 2.182 12 2.182S21.818 6.57 21.818 12 17.43 21.818 12 21.818z"/>
+            </svg>
+          </a>
+          {/* YouTube */}
+          <a href="https://www.youtube.com/channel/UC0cy47ZgGCW0H_Mzrn6gc_g" target="_blank" rel="noreferrer"
+            style={{width:46,height:46,display:"flex",alignItems:"center",justifyContent:"center",background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,transition:"all 0.2s"}}
+            onMouseEnter={e=>{e.currentTarget.style.background="rgba(255,0,0,0.12)";e.currentTarget.style.borderColor="rgba(255,0,0,0.35)";}}
+            onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.borderColor="rgba(255,255,255,0.08)";}}>
+            <svg width="22" height="16" viewBox="0 0 24 17" fill="#FF0000" xmlns="http://www.w3.org/2000/svg">
+              <path d="M23.495 2.656a3.016 3.016 0 00-2.122-2.134C19.505 0 12 0 12 0S4.495 0 2.627.522A3.016 3.016 0 00.505 2.656 31.608 31.608 0 000 8.5a31.608 31.608 0 00.505 5.844 3.016 3.016 0 002.122 2.134C4.495 17 12 17 12 17s7.505 0 9.373-.522a3.016 3.016 0 002.122-2.134A31.608 31.608 0 0024 8.5a31.608 31.608 0 00-.505-5.844z"/>
+              <path d="M9.545 12.023V4.977L15.818 8.5l-6.273 3.523z" fill="white"/>
+            </svg>
+          </a>
+        </div>
+        {/* Web — centrada debajo */}
+        <div style={{marginBottom:32}}>
+          <a href="https://solariderteam.es" target="_blank" rel="noreferrer"
+            style={{display:"inline-flex",alignItems:"center",gap:8,background:"rgba(255,255,255,0.05)",border:"1px solid rgba(255,255,255,0.08)",borderRadius:12,padding:"10px 20px",color:"rgba(255,255,255,0.6)",textDecoration:"none",fontSize:13,fontWeight:600,transition:"all 0.2s"}}
+            onMouseEnter={e=>{e.currentTarget.style.background="rgba(204,0,0,0.12)";e.currentTarget.style.borderColor="rgba(204,0,0,0.35)";e.currentTarget.style.color="#fff";}}
+            onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.05)";e.currentTarget.style.borderColor="rgba(255,255,255,0.08)";e.currentTarget.style.color="rgba(255,255,255,0.6)";}}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/>
+            </svg>
+            solariderteam.es
+          </a>
+        </div>
+        {/* Reservar + copyright */}
+        <a href={RESERVA_URL} target="_blank" rel="noreferrer"
+          style={{display:"inline-block",background:`linear-gradient(90deg,#CC0000,#990000)`,borderRadius:8,padding:"10px 28px",color:"#fff",fontSize:13,fontWeight:700,textDecoration:"none",letterSpacing:"0.05em",marginBottom:28}}>
+          📅 Reservar Clase
+        </a>
+        <div style={{fontSize:11,color:"rgba(255,255,255,0.15)",letterSpacing:"0.08em"}}>© {new Date().getFullYear()} SolaRider Team · Barcelona</div>
+      </footer>
+
+      {/* ══ RIDER MODAL ══ */}
+      {activeRider && riderObj && (
+        <RiderModal rider={riderObj} group={GROUPS.find(g=>g.id===riderObj.groupId)} onClose={()=>setActiveRider(null)}/>
+      )}
+
+      {/* ══ GRUPO MODAL ══ */}
+      {activeGroup && groupObj && (
+        <GrupoModal group={groupObj} riders={riders.filter(r=>r.groupId===activeGroup)} onClose={()=>setActiveGroup(null)} onRiderClick={id=>{setActiveGroup(null);setActiveRider(id);}}/>
+      )}
+
+      {/* ══ WHATSAPP FLOATING ══ */}
+      <a href={`https://wa.me/${WA_NUMBER}?text=Hola%20SolaRider%2C%20tengo%20una%20consulta%20sobre%20la%20escuela`} target="_blank" rel="noreferrer"
+        style={{position:"fixed",bottom:28,right:28,zIndex:90,width:56,height:56,borderRadius:"50%",background:"#25D366",display:"flex",alignItems:"center",justifyContent:"center",fontSize:26,boxShadow:"0 4px 20px rgba(37,211,102,0.4)",textDecoration:"none",animation:"bounce 3s infinite",transition:"transform 0.2s"}}
+        onMouseEnter={e=>e.currentTarget.style.transform="scale(1.1)"}
+        onMouseLeave={e=>e.currentTarget.style.transform="scale(1)"}>
+        💬
+      </a>
+
+      {/* ══ ADMIN ══ */}
+      {adminOpen && <AdminSheet riders={riders} onSave={setRiders} onClose={()=>{setAdminOpen(false);setAdminAuthed(false);}} authed={adminAuthed} onAuth={()=>setAdminAuthed(true)}/>}
+    </div>
+  );
+}
+
+/* ── Hero Section ── */
+function HeroSection({ riders, onScrollDown }) {
+  const avgs=riders.filter(r=>r.sessions?.length).map(r=>avgScore(r.sessions.slice(-1)[0].scores));
+  const g=avgs.length?avgs.reduce((a,b)=>a+b,0)/avgs.length:0;
+  return (
+    <section style={{position:"relative",minHeight:"100vh",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",overflow:"hidden"}}>
+      <div style={{position:"absolute",inset:0,backgroundImage:`url(${IMGS.hero})`,backgroundSize:"cover",backgroundPosition:"center 30%",filter:"brightness(0.3)"}}/>
+      <div style={{position:"absolute",inset:0,background:"linear-gradient(165deg,rgba(160,0,0,0.55) 0%,rgba(0,0,0,0.2) 40%,rgba(0,0,0,0.92) 100%)"}}/>
+      <div style={{position:"relative",zIndex:2,textAlign:"center",padding:"0 5%",maxWidth:1000,margin:"0 auto"}}>
+
+        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:"clamp(60px,10vw,140px)",fontWeight:900,lineHeight:0.88,textTransform:"uppercase",letterSpacing:"-0.02em",marginBottom:12}}>
+          RIDER<br/><span style={{color:"#CC0000"}}>SCORE</span>BOARD
+        </div>
+        <div style={{fontSize:"clamp(14px,2vw,18px)",color:"rgba(255,255,255,0.45)",marginBottom:48,marginTop:14}}>Escuela de Ciclismo Enduro · Barcelona · Temporada 2024-25</div>
+        <div style={{display:"flex",gap:0,justifyContent:"center",background:"rgba(0,0,0,0.55)",backdropFilter:"blur(14px)",borderRadius:16,border:"1px solid rgba(255,255,255,0.07)",overflow:"hidden",maxWidth:580,margin:"0 auto 48px",flexWrap:"wrap"}}>
+          {[{val:riders.length,label:"Riders",c:"#CC0000"},{val:riders.reduce((a,r)=>a+(r.sessions?.length??0),0),label:"Sesiones",c:"#FF7700"},{val:g.toFixed(1),label:"Media Global",c:"#00E676"},{val:SEASON_RACES.length,label:"Carreras",c:"#FFD700"}].map((c,i)=>(
+            <div key={i} style={{flex:1,minWidth:100,padding:"20px 12px",borderRight:i<3?"1px solid rgba(255,255,255,0.07)":"none",textAlign:"center"}}>
+              <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:36,fontWeight:900,color:c.c,lineHeight:1}}>{c.val}</div>
+              <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"0.14em",marginTop:5}}>{c.label}</div>
+            </div>
+          ))}
+        </div>
+        <div style={{display:"flex",gap:14,justifyContent:"center",flexWrap:"wrap"}}>
+          <button onClick={onScrollDown}
+            style={{background:"transparent",border:"2px solid rgba(255,255,255,0.25)",borderRadius:50,padding:"13px 30px",color:"#fff",fontSize:14,fontWeight:600,letterSpacing:"0.06em",textTransform:"uppercase",transition:"all 0.3s"}}
+            onMouseEnter={e=>{e.target.style.borderColor="#CC0000";e.target.style.background="rgba(204,0,0,0.15)";}}
+            onMouseLeave={e=>{e.target.style.borderColor="rgba(255,255,255,0.25)";e.target.style.background="transparent";}}>
+            Ver Rankings ↓
+          </button>
+          <a href={RESERVA_URL} target="_blank" rel="noreferrer"
+            style={{background:"linear-gradient(90deg,#CC0000,#990000)",border:"none",borderRadius:50,padding:"13px 30px",color:"#fff",fontSize:14,fontWeight:800,letterSpacing:"0.06em",textTransform:"uppercase",textDecoration:"none",display:"flex",alignItems:"center",gap:8}}>
+            📅 Reservar Clase
+          </a>
+        </div>
+      </div>
+      <div style={{position:"absolute",bottom:28,left:"50%",transform:"translateX(-50%)",display:"flex",flexDirection:"column",alignItems:"center",gap:8,opacity:0.4}}>
+        <span style={{fontSize:10,letterSpacing:"0.2em",textTransform:"uppercase"}}>Desliza</span>
+        <div style={{width:1,height:36,background:"linear-gradient(to bottom,rgba(255,255,255,0.5),transparent)"}}/>
+      </div>
+    </section>
+  );
+}
+
+/* ── Ranking Table ── */
+function RankingTable({ riders, onRiderClick }) {
+  const [skillFilter, setSkillFilter] = useState("media");
+  const ranked=[...riders].filter(r=>r.sessions?.length).sort((a,b)=>{
+    const va=skillFilter==="media"?avgScore(a.sessions.slice(-1)[0].scores):(a.sessions.slice(-1)[0].scores[skillFilter]??0);
+    const vb=skillFilter==="media"?avgScore(b.sessions.slice(-1)[0].scores):(b.sessions.slice(-1)[0].scores[skillFilter]??0);
+    return vb-va;
+  });
+  return (
+    <div>
+      <div style={{display:"flex",gap:8,overflowX:"auto",paddingBottom:10,marginBottom:24,scrollbarWidth:"none",justifyContent:"center",flexWrap:"wrap"}}>
+        {[{id:"media",label:"Media",icon:"◉"},...SKILLS].map(sk=>(
+          <button key={sk.id} onClick={()=>setSkillFilter(sk.id)}
+            style={{flexShrink:0,padding:"6px 16px",borderRadius:20,border:`1px solid ${skillFilter===sk.id?RED:"rgba(255,255,255,0.1)"}`,background:skillFilter===sk.id?"rgba(204,0,0,0.2)":"rgba(255,255,255,0.04)",color:skillFilter===sk.id?"#fff":"rgba(255,255,255,0.45)",fontSize:12,fontWeight:600,transition:"all 0.2s"}}>
+            {sk.icon} {sk.label}
+          </button>
+        ))}
+      </div>
+      <div style={{maxWidth:760,margin:"0 auto"}}>
+        {ranked.map((rider,i)=>{
+          const sc=rider.sessions.slice(-1)[0].scores,val=skillFilter==="media"?avgScore(sc):(sc[skillFilter]??0),g=GROUPS.find(gr=>gr.id===rider.groupId),pts=riderPoints(rider),lv=riderLevel(pts);
+          return (
+            <div key={rider.id} onClick={()=>onRiderClick(rider.id)}
+              style={{display:"flex",alignItems:"center",gap:14,background:"rgba(0,0,0,0.5)",backdropFilter:"blur(8px)",borderRadius:12,padding:"14px 18px",marginBottom:8,border:`1px solid ${i<3?"rgba(204,0,0,0.2)":"rgba(255,255,255,0.05)"}`,cursor:"pointer",transition:"all 0.2s",animation:`fadeUp 0.5s ${Math.min(i,8)*0.04}s ease both`}}
+              onMouseEnter={e=>{e.currentTarget.style.background="rgba(204,0,0,0.1)";e.currentTarget.style.borderColor="rgba(204,0,0,0.35)";}}
+              onMouseLeave={e=>{e.currentTarget.style.background="rgba(0,0,0,0.5)";e.currentTarget.style.borderColor=i<3?"rgba(204,0,0,0.2)":"rgba(255,255,255,0.05)";}}>
+              <Medal rank={i+1}/>
+              <div style={{width:40,height:40,borderRadius:"50%",background:`${g.color}20`,border:`2px solid ${g.color}50`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:900,color:g.color,fontFamily:"'Barlow Condensed',sans-serif",flexShrink:0}}>{rider.name[0]}</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontSize:15,fontWeight:700,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{rider.name}</div>
+                <div style={{display:"flex",gap:8,alignItems:"center",marginTop:2}}>
+                  <span style={{fontSize:11,color:g.color}}>{g.name}</span>
+                  <span style={{fontSize:10,color:lv.color,fontWeight:700,background:`${lv.color}15`,padding:"1px 8px",borderRadius:10}}>{lv.name}</span>
+                  <span style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>{pts}pts</span>
+                </div>
+              </div>
+              <div style={{textAlign:"right",flexShrink:0}}>
+                <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:30,fontWeight:900,color:scoreColor(val),lineHeight:1}}>{val.toFixed(1)}</div>
+                <div style={{fontSize:9,color:"rgba(255,255,255,0.25)",marginTop:1,textTransform:"uppercase"}}>{skillFilter==="media"?"media":SKILLS.find(s=>s.id===skillFilter)?.label}</div>
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── Logros Section ── */
+function LogrosSection({ riders, onRiderClick }) {
+  return (
+    <div>
+      {/* Level legend */}
+      <div style={{display:"flex",gap:12,justifyContent:"center",marginBottom:44,flexWrap:"wrap"}}>
+        {[["NOVATO","#888",0],["INTERMEDIO","#FFAA00",150],["AVANZADO","#FF6600",450],["EXPERT","#CC0000",900],["ELITE","#FFD700",1500]].map(([name,color,pts])=>(
+          <div key={name} style={{background:"rgba(0,0,0,0.5)",border:`1px solid ${color}40`,borderRadius:10,padding:"12px 18px",textAlign:"center",minWidth:110}}>
+            <div style={{fontSize:11,fontWeight:700,color,textTransform:"uppercase",letterSpacing:"0.1em"}}>{name}</div>
+            <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",marginTop:3}}>{pts}+ pts</div>
+          </div>
+        ))}
+      </div>
+      {/* Achievement badges */}
+      <div style={{marginBottom:48}}>
+        <div style={{fontSize:11,color:RED,letterSpacing:"0.18em",textTransform:"uppercase",marginBottom:20,textAlign:"center"}}>Logros Disponibles</div>
+        <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:12,maxWidth:900,margin:"0 auto"}}>
+          {ACHIEVEMENTS.map((ach,i)=>{
+            const earnedBy=riders.filter(r=>ach.check(r));
+            return (
+              <div key={ach.id} style={{background:"rgba(0,0,0,0.55)",border:`1px solid rgba(255,255,255,0.07)`,borderRadius:12,padding:"16px 14px",textAlign:"center",animation:`fadeUp 0.5s ${i*0.05}s ease both`}}>
+                <div style={{fontSize:28,marginBottom:8}}>{ach.icon}</div>
+                <div style={{fontSize:13,fontWeight:700,marginBottom:4}}>{ach.name}</div>
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginBottom:8,lineHeight:1.4}}>{ach.desc}</div>
+                <div style={{fontSize:12,fontWeight:700,color:"#FFD700"}}>+{ach.pts} pts</div>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.3)",marginTop:4}}>{earnedBy.length} riders</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      {/* Rider rankings by points */}
+      <div style={{fontSize:11,color:RED,letterSpacing:"0.18em",textTransform:"uppercase",marginBottom:20,textAlign:"center"}}>Ranking de Puntos</div>
+      <div style={{maxWidth:760,margin:"0 auto"}}>
+        {[...riders].sort((a,b)=>riderPoints(b)-riderPoints(a)).map((rider,i)=>{
+          const pts=riderPoints(rider),lv=riderLevel(pts),g=GROUPS.find(gr=>gr.id===rider.groupId),achCount=ACHIEVEMENTS.filter(a=>a.check(rider)).length,pct=lv.next?Math.min(100,(pts/lv.next)*100):100;
+          return (
+            <div key={rider.id} onClick={()=>onRiderClick(rider.id)}
+              style={{background:"rgba(0,0,0,0.5)",backdropFilter:"blur(8px)",borderRadius:12,padding:"16px 18px",marginBottom:8,border:"1px solid rgba(255,255,255,0.06)",cursor:"pointer",transition:"all 0.2s",animation:`fadeUp 0.4s ${Math.min(i,6)*0.06}s ease both`}}
+              onMouseEnter={e=>{e.currentTarget.style.background="rgba(204,0,0,0.1)";}}
+              onMouseLeave={e=>{e.currentTarget.style.background="rgba(0,0,0,0.5)";}}>
+              <div style={{display:"flex",alignItems:"center",gap:14,marginBottom:10}}>
+                <Medal rank={i+1}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                    <span style={{fontSize:15,fontWeight:700}}>{rider.name}</span>
+                    <span style={{fontSize:10,color:lv.color,fontWeight:700,background:`${lv.color}18`,padding:"2px 9px",borderRadius:10}}>{lv.name}</span>
+                    <span style={{fontSize:11,color:g.color}}>{g.name}</span>
+                  </div>
+                  <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",marginTop:2}}>{achCount} logros · {rider.compResults?.length??0} carreras</div>
+                </div>
+                <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:28,fontWeight:900,color:"#FFD700",flexShrink:0}}>{pts}<span style={{fontSize:12,marginLeft:2}}>pts</span></div>
+              </div>
+              <div style={{height:4,background:"rgba(255,255,255,0.07)",borderRadius:4,overflow:"hidden"}}>
+                <div style={{height:"100%",width:`${pct}%`,background:`linear-gradient(90deg,${lv.color},${lv.color}99)`,borderRadius:4,transition:"width 1s ease"}}/>
+              </div>
+              {lv.next&&<div style={{fontSize:10,color:"rgba(255,255,255,0.25)",marginTop:4,textAlign:"right"}}>{pts}/{lv.next} pts para siguiente nivel</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── Competicion Section ── */
+function CompeticionSection({ riders }) {
+  return (
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(300px,1fr))",gap:16}}>
+        {SEASON_RACES.map((race,i)=>{
+          const participated=riders.filter(r=>r.compResults?.some(c=>c.raceId===race.id));
+          const isBoss=race.type==="boss",isFinal=race.type==="final";
+          const borderColor=isFinal?"#FFD700":isBoss?"#FF0000":RED;
+          return (
+            <div key={race.id} style={{background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",border:`1px solid ${borderColor}${isFinal?"80":"30"}`,borderRadius:16,padding:"24px",position:"relative",overflow:"hidden",animation:`fadeUp 0.5s ${i*0.07}s ease both`,transition:"all 0.3s`"}}
+              onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-3px)";}}
+              onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";}}>
+              {(isBoss||isFinal)&&<div style={{position:"absolute",top:0,left:0,right:0,height:3,background:isFinal?"linear-gradient(90deg,#FFD700,#FFA000)":"linear-gradient(90deg,#FF0000,#CC0000)"}}/>}
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
+                <div>
+                  <div style={{fontSize:11,color:isFinal?"#FFD700":isBoss?"#FF4444":RED,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.14em",marginBottom:4}}>{isFinal?"FINAL BOSS":isBoss?"BOSS RACE":"MISIÓN"} · {race.date}</div>
+                  <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:900,lineHeight:1.1,marginBottom:8}}>{race.icon} {race.name}</div>
+                </div>
+                <div style={{background:`${borderColor}20`,border:`1px solid ${borderColor}40`,borderRadius:8,padding:"6px 12px",textAlign:"center",flexShrink:0}}>
+                  <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:900,color:"#FFD700"}}>{race.points}</div>
+                  <div style={{fontSize:9,color:"rgba(255,255,255,0.35)",textTransform:"uppercase"}}>pts</div>
+                </div>
+              </div>
+              <div style={{marginBottom:14}}>
+                <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:8}}>Objetivos</div>
+                {race.objectives.map((obj,j)=>(
+                  <div key={j} style={{display:"flex",alignItems:"center",gap:8,marginBottom:6}}>
+                    <div style={{width:6,height:6,borderRadius:"50%",background:borderColor,flexShrink:0}}/>
+                    <span style={{fontSize:12,color:"rgba(255,255,255,0.6)"}}>{obj}</span>
+                  </div>
+                ))}
+              </div>
+              <div style={{borderTop:"1px solid rgba(255,255,255,0.06)",paddingTop:12,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>{participated.length} riders participaron</div>
+                {participated.length>0&&<div style={{display:"flex"}}>
+                  {participated.slice(0,4).map(r=>(
+                    <div key={r.id} style={{width:26,height:26,borderRadius:"50%",background:`${GROUPS.find(g=>g.id===r.groupId)?.color||RED}30`,border:"2px solid rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:11,fontWeight:700,color:GROUPS.find(g=>g.id===r.groupId)?.color||RED,marginLeft:-6,fontFamily:"'Barlow Condensed',sans-serif"}}>{r.name[0]}</div>
+                  ))}
+                  {participated.length>4&&<div style={{width:26,height:26,borderRadius:"50%",background:"rgba(255,255,255,0.08)",border:"2px solid rgba(0,0,0,0.5)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:9,color:"rgba(255,255,255,0.5)",marginLeft:-6}}>+{participated.length-4}</div>}
+                </div>}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/* ── Tienda Section ── */
+function TiendaSection() {
+  return (
+    <div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:16}}>
+        {SHOP_ITEMS.map((item,i)=>(
+          <div key={item.id} style={{background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,overflow:"hidden",animation:`fadeUp 0.5s ${i*0.07}s ease both`,transition:"all 0.3s"}}
+            onMouseEnter={e=>{e.currentTarget.style.transform="translateY(-4px)";e.currentTarget.style.borderColor="rgba(204,0,0,0.3)";}}
+            onMouseLeave={e=>{e.currentTarget.style.transform="translateY(0)";e.currentTarget.style.borderColor="rgba(255,255,255,0.07)";}}>
+            <div style={{height:180,backgroundImage:`url(${item.img})`,backgroundSize:"cover",backgroundPosition:"center",position:"relative"}}>
+              <div style={{position:"absolute",inset:0,background:"linear-gradient(to bottom,transparent 50%,rgba(0,0,0,0.8) 100%)"}}/>
+              <div style={{position:"absolute",top:12,left:12,background:RED,borderRadius:20,padding:"4px 12px",fontSize:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.1em"}}>{item.tag}</div>
+            </div>
+            <div style={{padding:"16px 18px"}}>
+              <div style={{fontSize:15,fontWeight:700,marginBottom:4}}>{item.name}</div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:26,fontWeight:900,color:"#FFD700"}}>{item.price}€</div>
+                <a href={`https://wa.me/${WA_NUMBER}?text=Hola%2C%20me%20interesa%20el%20producto%3A%20${encodeURIComponent(item.name)}`} target="_blank" rel="noreferrer"
+                  style={{background:RED,border:"none",borderRadius:8,padding:"8px 16px",color:"#fff",fontSize:12,fontWeight:700,textDecoration:"none",display:"flex",alignItems:"center",gap:6}}>
+                  💬 Pedir
+                </a>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{textAlign:"center",marginTop:32,padding:"20px",background:"rgba(0,0,0,0.4)",borderRadius:12,border:"1px solid rgba(255,255,255,0.06)",maxWidth:500,margin:"32px auto 0"}}>
+        <div style={{fontSize:13,color:"rgba(255,255,255,0.5)",marginBottom:12}}>¿Quieres un producto personalizado o tienes alguna duda? Escríbenos directamente.</div>
+        <a href={`https://wa.me/${WA_NUMBER}?text=Hola%20SolaRider%2C%20me%20interesa%20la%20tienda`} target="_blank" rel="noreferrer"
+          style={{display:"inline-flex",alignItems:"center",gap:8,background:"#25D366",borderRadius:8,padding:"10px 24px",color:"#fff",fontSize:13,fontWeight:700,textDecoration:"none"}}>
+          💬 Contactar por WhatsApp
+        </a>
+      </div>
+    </div>
+  );
+}
+
+/* ── Formacion Section ── */
+function FormacionSection() {
+  const [cat, setCat] = useState("Todos");
+  const cats=["Todos","Técnica","Físico","Mental"];
+  const filtered=RECURSOS.filter(r=>cat==="Todos"||r.cat===cat);
+  return (
+    <div>
+      <div style={{display:"flex",gap:8,justifyContent:"center",marginBottom:32,flexWrap:"wrap"}}>
+        {cats.map(c=>(
+          <button key={c} onClick={()=>setCat(c)}
+            style={{padding:"7px 20px",borderRadius:20,border:`1px solid ${cat===c?RED:"rgba(255,255,255,0.1)"}`,background:cat===c?"rgba(204,0,0,0.2)":"rgba(255,255,255,0.04)",color:cat===c?"#fff":"rgba(255,255,255,0.5)",fontSize:13,fontWeight:600,transition:"all 0.2s"}}>
+            {c}
+          </button>
+        ))}
+      </div>
+      <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:14}}>
+        {filtered.map((rec,i)=>(
+          <div key={rec.id} style={{background:"rgba(0,0,0,0.6)",backdropFilter:"blur(8px)",border:`1px solid ${rec.color}20`,borderRadius:14,padding:"22px 20px",animation:`fadeUp 0.5s ${i*0.06}s ease both`,transition:"all 0.3s",cursor:"pointer",position:"relative",overflow:"hidden"}}
+            onMouseEnter={e=>{e.currentTarget.style.background="rgba(204,0,0,0.08)";e.currentTarget.style.transform="translateY(-3px)";}}
+            onMouseLeave={e=>{e.currentTarget.style.background="rgba(0,0,0,0.6)";e.currentTarget.style.transform="translateY(0)";}}>
+            <div style={{position:"absolute",top:0,left:0,bottom:0,width:3,background:rec.color}}/>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+              <span style={{fontSize:22}}>{rec.icon}</span>
+              <div style={{display:"flex",gap:6}}>
+                <span style={{fontSize:10,background:`${rec.color}20`,color:rec.color,padding:"2px 10px",borderRadius:10,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.08em"}}>{rec.cat}</span>
+                <span style={{fontSize:10,background:"rgba(255,255,255,0.06)",color:"rgba(255,255,255,0.4)",padding:"2px 10px",borderRadius:10,textTransform:"uppercase",letterSpacing:"0.06em"}}>{rec.type==="pdf"?"PDF":rec.type==="video"?"Vídeo":"Consejo"}</span>
+              </div>
+            </div>
+            <div style={{fontSize:15,fontWeight:700,marginBottom:6,lineHeight:1.3}}>{rec.title}</div>
+            <div style={{fontSize:12,color:"rgba(255,255,255,0.45)",lineHeight:1.5,marginBottom:14}}>{rec.desc}</div>
+            <div style={{fontSize:12,color:rec.color,fontWeight:600,display:"flex",alignItems:"center",gap:4}}>
+              {rec.type==="pdf"?"📥 Descargar":rec.type==="video"?"▶ Ver vídeo":"💡 Leer"} →
+            </div>
+          </div>
+        ))}
+      </div>
+      <div style={{textAlign:"center",marginTop:28,padding:"16px",background:"rgba(255,255,255,0.03)",borderRadius:10,border:"1px solid rgba(255,255,255,0.05)",maxWidth:500,margin:"28px auto 0"}}>
+        <div style={{fontSize:12,color:"rgba(255,255,255,0.4)",marginBottom:8}}>¿Tienes material que quieras compartir con el equipo?</div>
+        <a href={`https://wa.me/${WA_NUMBER}?text=Hola%2C%20quiero%20compartir%20material%20de%20formaci%C3%B3n`} target="_blank" rel="noreferrer"
+          style={{fontSize:12,color:RED,fontWeight:700,textDecoration:"none"}}>Contactar al equipo técnico →</a>
+      </div>
+    </div>
+  );
+}
+
+/* ── Rider Grid ── */
+function RiderGrid({ riders, onRiderClick }) {
+  const sorted=[...riders].sort((a,b)=>avgScore(b.sessions?.slice(-1)[0]?.scores)-avgScore(a.sessions?.slice(-1)[0]?.scores));
+  return (
+    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(240px,1fr))",gap:16}}>
+      {sorted.map((rider,i)=>{
+        const s=rider.sessions?.slice(-1)[0]?.scores,a=s?avgScore(s):null,g=GROUPS.find(gr=>gr.id===rider.groupId),pts=riderPoints(rider),lv=riderLevel(pts),achCount=ACHIEVEMENTS.filter(ach=>ach.check(rider)).length;
+        return (
+          <div key={rider.id} onClick={()=>onRiderClick(rider.id)}
+            style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:14,padding:"22px 18px",cursor:"pointer",transition:"all 0.3s",position:"relative",overflow:"hidden",animation:`fadeUp 0.5s ${Math.min(i,9)*0.05}s ease both`}}
+            onMouseEnter={e=>{e.currentTarget.style.background="rgba(204,0,0,0.08)";e.currentTarget.style.borderColor=`${g.color}35`;e.currentTarget.style.transform="translateY(-4px)";}}
+            onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.03)";e.currentTarget.style.borderColor="rgba(255,255,255,0.07)";e.currentTarget.style.transform="translateY(0)";}}>
+            <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:g.color}}/>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+              <div style={{width:50,height:50,borderRadius:"50%",background:`${g.color}20`,border:`2px solid ${g.color}60`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:21,fontWeight:900,color:g.color,fontFamily:"'Barlow Condensed',sans-serif"}}>{rider.name[0]}</div>
+              {a!==null&&<Ring value={parseFloat(a.toFixed(1))} size={56} color={g.color}/>}
+            </div>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:21,fontWeight:900,marginBottom:2,lineHeight:1.1}}>{rider.name}</div>
+            <div style={{fontSize:12,color:g.color,marginBottom:4,fontWeight:600}}>{g.name}{riderAge(rider)?` · ${riderAge(rider)} años`:""}</div>
+            <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+              <span style={{fontSize:10,color:lv.color,background:`${lv.color}18`,padding:"2px 8px",borderRadius:10,fontWeight:700}}>{lv.name}</span>
+              <span style={{fontSize:10,color:"#FFD700",background:"rgba(255,215,0,0.1)",padding:"2px 8px",borderRadius:10}}>{pts}pts</span>
+              <span style={{fontSize:10,color:"rgba(255,255,255,0.35)",background:"rgba(255,255,255,0.05)",padding:"2px 8px",borderRadius:10}}>{achCount} logros</span>
+            </div>
+            {s&&SKILLS.slice(0,3).map(sk=><Bar key={sk.id} value={s[sk.id]??0} label={`${sk.icon} ${sk.label}`} color={g.color}/>)}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+/* ─────────────── RIDER MODAL ─────────────── */
+/* ─────────────── GRUPO MODAL ─────────────── */
+function GrupoModal({ group, riders, onClose, onRiderClick }) {
+  const sorted = [...riders].sort((a,b) => avgScore(b.sessions?.slice(-1)[0]?.scores??{}) - avgScore(a.sessions?.slice(-1)[0]?.scores??{}));
+  const avgs = riders.filter(r=>r.sessions?.length).map(r=>avgScore(r.sessions.slice(-1)[0].scores));
+  const media = avgs.length ? (avgs.reduce((x,y)=>x+y,0)/avgs.length) : 0;
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:200,background:"rgba(0,0,0,0.95)",backdropFilter:"blur(8px)",overflowY:"auto"}} onClick={onClose}>
+      <div style={{maxWidth:960,margin:"0 auto",padding:"40px 5% 60px"}} onClick={e=>e.stopPropagation()}>
+        <button onClick={onClose} style={{background:"transparent",border:"none",color:RED,fontSize:14,fontWeight:700,marginBottom:28,display:"flex",alignItems:"center",gap:8,cursor:"pointer"}}>← Volver</button>
+
+        {/* Cabecera grupo */}
+        <div style={{background:`linear-gradient(160deg,${group.color}18 0%,#0A0A0A 70%)`,borderRadius:20,padding:"32px",marginBottom:28,border:`1px solid ${group.color}30`,position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:group.color}}/>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:20}}>
+            <div>
+              <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:"clamp(36px,6vw,60px)",fontWeight:900,lineHeight:0.9,marginBottom:8}}>{group.name}</div>
+              <div style={{fontSize:13,color:group.color,fontWeight:600,textTransform:"uppercase",letterSpacing:"0.1em"}}>{group.age} años · {riders.length} riders</div>
+            </div>
+            <div style={{display:"flex",gap:32,flexWrap:"wrap"}}>
+              {[
+                {val:riders.length, label:"Riders", c:group.color},
+                {val:riders.reduce((a,r)=>a+(r.sessions?.length??0),0), label:"Sesiones", c:"rgba(255,255,255,0.6)"},
+                {val:media>0?media.toFixed(1):"—", label:"Media grupo", c:media>0?scoreColor(media):"#888"}
+              ].map((c,i)=>(
+                <div key={i} style={{textAlign:"center"}}>
+                  <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:36,fontWeight:900,color:c.c,lineHeight:1}}>{c.val}</div>
+                  <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"0.1em"}}>{c.label}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        {/* Riders */}
+        {sorted.length===0 ? (
+          <div style={{textAlign:"center",padding:"60px 0",color:"rgba(255,255,255,0.3)",fontSize:16}}>No hay riders en este grupo todavía</div>
+        ) : (
+          <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(260px,1fr))",gap:16}}>
+            {sorted.map((rider,i)=>{
+              const s=rider.sessions?.slice(-1)[0]?.scores, a=s?avgScore(s):null;
+              const pts=riderPoints(rider), lv=riderLevel(pts), achCount=ACHIEVEMENTS.filter(ach=>ach.check(rider)).length;
+              const progress=rider.sessions?.length>1 ? avgScore(rider.sessions.slice(-1)[0].scores)-avgScore(rider.sessions.slice(-2)[0].scores) : null;
+              return (
+                <div key={rider.id} onClick={()=>onRiderClick(rider.id)}
+                  style={{background:"rgba(255,255,255,0.03)",border:`1px solid ${group.color}22`,borderRadius:14,padding:"22px 18px",cursor:"pointer",transition:"all 0.3s",position:"relative",overflow:"hidden",animation:`fadeUp 0.4s ${Math.min(i,8)*0.06}s ease both`}}
+                  onMouseEnter={e=>{e.currentTarget.style.background=`${group.color}12`;e.currentTarget.style.borderColor=`${group.color}55`;e.currentTarget.style.transform="translateY(-4px)";}}
+                  onMouseLeave={e=>{e.currentTarget.style.background="rgba(255,255,255,0.03)";e.currentTarget.style.borderColor=`${group.color}22`;e.currentTarget.style.transform="translateY(0)";}}>
+                  <div style={{position:"absolute",top:0,left:0,right:0,height:3,background:group.color}}/>
+                  {/* Avatar + nota */}
+                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:14}}>
+                    <div style={{display:"flex",alignItems:"center",gap:10}}>
+                      <div style={{fontSize:12,color:"rgba(255,255,255,0.25)",fontWeight:700,minWidth:22}}>#{i+1}</div>
+                      <div style={{width:48,height:48,borderRadius:"50%",background:`${group.color}20`,border:`2px solid ${group.color}60`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,fontWeight:900,color:group.color,fontFamily:"'Barlow Condensed',sans-serif"}}>{rider.name[0]}</div>
+                    </div>
+                    {a!==null && <Ring value={parseFloat(a.toFixed(1))} size={54} color={group.color}/>}
+                  </div>
+                  {/* Info */}
+                  <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:21,fontWeight:900,marginBottom:2,lineHeight:1.1}}>{rider.name}</div>
+                  {riderAge(rider) && <div style={{fontSize:11,color:"rgba(255,255,255,0.4)",marginBottom:8}}>{riderAge(rider)} años</div>}
+                  <div style={{display:"flex",gap:6,flexWrap:"wrap",marginBottom:12}}>
+                    <span style={{fontSize:10,color:lv.color,background:`${lv.color}18`,padding:"2px 8px",borderRadius:10,fontWeight:700}}>{lv.name}</span>
+                    <span style={{fontSize:10,color:"#FFD700",background:"rgba(255,215,0,0.1)",padding:"2px 8px",borderRadius:10}}>{pts}pts</span>
+                    <span style={{fontSize:10,color:"rgba(255,255,255,0.35)",background:"rgba(255,255,255,0.05)",padding:"2px 8px",borderRadius:10}}>{achCount} logros</span>
+                    {progress!==null && <span style={{fontSize:10,color:progress>0?"#00E676":progress<0?"#FF1744":"#888",background:"rgba(255,255,255,0.05)",padding:"2px 8px",borderRadius:10}}>{progress>0?`▲ +${progress.toFixed(1)}`:`▼ ${progress.toFixed(1)}`}</span>}
+                  </div>
+                  {/* Habilidades */}
+                  {s && SKILLS.slice(0,4).map(sk=><Bar key={sk.id} value={s[sk.id]??0} label={`${sk.icon} ${sk.label}`} color={group.color}/>)}
+                  {!s && <div style={{fontSize:12,color:"rgba(255,255,255,0.25)",marginTop:8}}>Sin sesiones aún</div>}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RiderModal({ rider, group, onClose }) {
+  const lastSession = rider.sessions?.slice(-1)[0];
+  const scores = lastSession?.scores ?? {};
+  const avg = lastSession ? avgScore(scores) : null;
+  const pts = riderPoints(rider);
+  const lv = riderLevel(pts);
+  const achs = ACHIEVEMENTS.filter(ach => ach.check(rider));
+  const compPts = (rider.compResults||[]).reduce((s,c)=>s+c.pts,0);
+  const joinDate = rider.sessions?.length ? rider.sessions[0].date : null;
+
+  // Objetivos completados de todas las carreras
+  const allObjs = (rider.compResults||[]).flatMap(c=>{
+    const race = SEASON_RACES.find(r=>r.id===c.raceId);
+    return (c.objs||[]).map(obj=>({race: race?.name||c.raceId, obj}));
+  });
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:300,background:"#0A0A0A",overflowY:"auto"}}>
+      <div style={{maxWidth:720,margin:"0 auto",padding:"32px 5% 80px"}}>
+
+        {/* Botón volver */}
+        <button onClick={onClose} style={{background:"transparent",border:"none",color:RED,fontSize:14,fontWeight:700,marginBottom:32,display:"flex",alignItems:"center",gap:8,cursor:"pointer",padding:0}}>
+          ← Volver
+        </button>
+
+        {/* Cabecera rider */}
+        <div style={{background:`linear-gradient(160deg,${group.color}18 0%,#111 80%)`,borderRadius:20,padding:"32px",marginBottom:24,border:`1px solid ${group.color}30`,position:"relative",overflow:"hidden"}}>
+          <div style={{position:"absolute",top:0,left:0,right:0,height:4,background:group.color}}/>
+          <div style={{display:"flex",alignItems:"center",gap:20,flexWrap:"wrap"}}>
+            <div style={{width:72,height:72,borderRadius:"50%",background:`${group.color}22`,border:`3px solid ${group.color}`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:32,fontWeight:900,color:group.color,fontFamily:"'Barlow Condensed',sans-serif",flexShrink:0}}>{rider.name[0]}</div>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:"clamp(32px,6vw,52px)",fontWeight:900,lineHeight:1,marginBottom:6}}>{rider.name}</div>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+                <span style={{fontSize:13,color:group.color,fontWeight:600}}>{group.name}</span>
+                {riderAge(rider) && <span style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>· {riderAge(rider)} años</span>}
+                <span style={{fontSize:11,color:lv.color,background:`${lv.color}18`,padding:"2px 10px",borderRadius:10,fontWeight:700}}>{lv.name}</span>
+              </div>
+              {joinDate && <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:6}}>Se unió a SolaRider Team el {joinDate}</div>}
+            </div>
+            {avg!==null && <Ring value={parseFloat(avg.toFixed(1))} size={80} color={group.color}/>}
+          </div>
+        </div>
+
+        {/* Stats rápidos */}
+        <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:12,marginBottom:24}}>
+          {[
+            {val:pts, label:"Puntos totales", c:"#FFD700"},
+            {val:achs.length, label:"Logros", c:RED},
+            {val:rider.sessions?.length??0, label:"Sesiones", c:group.color},
+          ].map((s,i)=>(
+            <div key={i} style={{background:"rgba(255,255,255,0.04)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:12,padding:"18px 12px",textAlign:"center"}}>
+              <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:34,fontWeight:900,color:s.c,lineHeight:1}}>{s.val}</div>
+              <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"0.08em",marginTop:4}}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Puntuaciones por habilidad */}
+        {lastSession && (
+          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:"24px",marginBottom:24}}>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:18,fontWeight:700,marginBottom:16,color:"rgba(255,255,255,0.7)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Puntuación por habilidad</div>
+            <div style={{display:"grid",gap:10}}>
+              {SKILLS.map(sk=>(
+                <div key={sk.id} style={{display:"flex",alignItems:"center",gap:12}}>
+                  <div style={{fontSize:16}}>{sk.icon}</div>
+                  <div style={{flex:1}}>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                      <span style={{fontSize:12,color:"rgba(255,255,255,0.6)"}}>{sk.label}</span>
+                      <span style={{fontSize:13,fontWeight:700,color:scoreColor(scores[sk.id]??0)}}>{scores[sk.id]??0}/10</span>
+                    </div>
+                    <div style={{height:6,background:"rgba(255,255,255,0.07)",borderRadius:4,overflow:"hidden"}}>
+                      <div style={{height:"100%",width:`${(scores[sk.id]??0)*10}%`,background:scoreColor(scores[sk.id]??0),borderRadius:4,transition:"width 0.6s ease"}}/>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{marginTop:16,paddingTop:16,borderTop:"1px solid rgba(255,255,255,0.07)",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <span style={{fontSize:12,color:"rgba(255,255,255,0.4)"}}>Última sesión: {lastSession.date}</span>
+              <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:900,color:scoreColor(avg)}}>Media: {avg.toFixed(1)}</span>
+            </div>
+          </div>
+        )}
+
+        {/* Objetivos completados */}
+        {allObjs.length>0 && (
+          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:"24px",marginBottom:24}}>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:18,fontWeight:700,marginBottom:16,color:"rgba(255,255,255,0.7)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Objetivos completados</div>
+            <div style={{display:"grid",gap:8}}>
+              {allObjs.map((o,i)=>(
+                <div key={i} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 12px",background:"rgba(0,200,100,0.05)",border:"1px solid rgba(0,200,100,0.15)",borderRadius:10}}>
+                  <span style={{color:"#00E676",fontSize:14,flexShrink:0}}>✓</span>
+                  <div>
+                    <div style={{fontSize:13,color:"rgba(255,255,255,0.85)"}}>{o.obj}</div>
+                    <div style={{fontSize:11,color:"rgba(255,255,255,0.3)",marginTop:2}}>{o.race}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Logros */}
+        {achs.length>0 && (
+          <div style={{background:"rgba(255,255,255,0.03)",border:"1px solid rgba(255,255,255,0.07)",borderRadius:16,padding:"24px"}}>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:18,fontWeight:700,marginBottom:16,color:"rgba(255,255,255,0.7)",textTransform:"uppercase",letterSpacing:"0.05em"}}>Logros desbloqueados</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fill,minmax(160px,1fr))",gap:10}}>
+              {achs.map((ach,i)=>(
+                <div key={i} style={{background:"rgba(255,215,0,0.06)",border:"1px solid rgba(255,215,0,0.2)",borderRadius:10,padding:"12px",textAlign:"center"}}>
+                  <div style={{fontSize:22,marginBottom:4}}>{ach.icon}</div>
+                  <div style={{fontSize:12,fontWeight:700,color:"rgba(255,255,255,0.85)",marginBottom:2}}>{ach.name}</div>
+                  <div style={{fontSize:10,color:"#FFD700"}}>+{ach.pts} pts</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+      </div>
+    </div>
+  );
+}
+
+
+/* ─────────────── ADMIN SHEET ─────────────── */
+function AdminSheet({ riders, onSave, onClose, authed, onAuth }) {
+  const [pass, setPass] = useState(""); const [err, setErr] = useState("");
+  const [adminTab, setAdminTab] = useState(0); const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState(""); const [editAge, setEditAge] = useState("");
+  const [editScores, setEditScores] = useState({}); const [editNote, setEditNote] = useState("");
+  const [editObjs, setEditObjs] = useState({}); // {raceId: {pts, objs:[]}}
+  const [newName, setNewName] = useState(""); const [newAge, setNewAge] = useState(""); const [newGroup, setNewGroup] = useState("adultos"); const [newBirthYear, setNewBirthYear] = useState("");
+  const [saved, setSaved] = useState(false); const [scoreTab, setScoreTab] = useState("edit"); // "edit" | "new"
+  const [bonusRider, setBonusRider] = useState(""); const [bonusPts, setBonusPts] = useState(""); const [bonusReason, setBonusReason] = useState(""); const [bonusSaved, setBonusSaved] = useState(false);
+
+  const handleAuth=()=>{ if(pass===ADMIN_PASS){onAuth();setErr("");}else setErr("Contraseña incorrecta"); };
+
+  const openEdit=r=>{
+    setEditingId(r.id);setEditName(r.name);setEditAge(r.age?.toString()||"");
+    const sc=r.sessions?.slice(-1)[0]?.scores??{},init={};
+    SKILLS.forEach(sk=>{init[sk.id]=sc[sk.id]??5;});
+    setEditScores(init);setEditNote(r.sessions?.slice(-1)[0]?.note||"");
+    const objs={};
+    SEASON_RACES.forEach(race=>{ const cr=r.compResults?.find(c=>c.raceId===race.id); objs[race.id]={pts:cr?.pts??0,objs:cr?.objs??[]}; });
+    setEditObjs(objs);setScoreTab("edit");
+  };
+
+  const saveEdit=()=>{
+    const updated=riders.map(r=>{
+      if(r.id!==editingId)return r;
+      let sessions=r.sessions||[];
+      if(scoreTab==="new"){
+        sessions=[...sessions,{id:Date.now().toString(),date:new Date().toLocaleDateString("es-ES"),scores:{...editScores},note:editNote}];
+      } else if(sessions.length){
+        sessions=[...sessions.slice(0,-1),{...sessions.slice(-1)[0],scores:{...editScores},note:editNote}];
+      } else {
+        sessions=[{id:Date.now().toString(),date:new Date().toLocaleDateString("es-ES"),scores:{...editScores},note:editNote}];
+      }
+      const compResults=SEASON_RACES.filter(race=>editObjs[race.id]?.pts>0).map(race=>({raceId:race.id,pts:editObjs[race.id].pts,objs:editObjs[race.id].objs}));
+      return{...r,name:editName,age:editAge||r.age,sessions,compResults};
+    });
+    onSave(updated);flash();setEditingId(null);
+  };
+
+  const deleteRider=id=>{onSave(riders.filter(r=>r.id!==id));setEditingId(null);};
+  const addRider=()=>{if(!newName.trim())return;const age=newBirthYear?(new Date().getFullYear()-parseInt(newBirthYear)).toString():newAge;onSave([...riders,{id:Date.now().toString(),name:newName.trim(),age,birthYear:newBirthYear||null,groupId:newGroup,sessions:[],compResults:[]}]);setNewName("");setNewAge("");setNewBirthYear("");flash();};
+  const flash=()=>{setSaved(true);setTimeout(()=>setSaved(false),2200);};
+
+  const addBonus=()=>{
+    if(!bonusRider||!bonusPts||parseInt(bonusPts)===0)return;
+    const entry={id:Date.now().toString(),pts:parseInt(bonusPts),reason:bonusReason.trim()||"Bonus del entrenador",date:new Date().toLocaleDateString("es-ES")};
+    onSave(riders.map(r=>r.id===bonusRider?{...r,bonusPoints:[...(r.bonusPoints||[]),entry]}:r));
+    setBonusPts("");setBonusReason("");setBonusSaved(true);setTimeout(()=>setBonusSaved(false),2200);
+  };
+
+  const removeBonus=(riderId,bonusId)=>{
+    onSave(riders.map(r=>r.id===riderId?{...r,bonusPoints:(r.bonusPoints||[]).filter(b=>b.id!==bonusId)}:r));
+  };
+  const avgVal=Object.keys(editScores).length?Object.values(editScores).reduce((a,b)=>a+b,0)/SKILLS.length:0;
+
+  const toggleObj=(raceId,obj)=>{
+    setEditObjs(prev=>{const cur=prev[raceId].objs||[];return{...prev,[raceId]:{...prev[raceId],objs:cur.includes(obj)?cur.filter(o=>o!==obj):[...cur,obj]}};});
+  };
+
+  return (
+    <div style={{position:"fixed",inset:0,zIndex:300}}>
+      <div style={{position:"absolute",inset:0,background:"rgba(0,0,0,0.92)",backdropFilter:"blur(6px)"}} onClick={onClose}/>
+      <div style={{position:"absolute",bottom:0,left:0,right:0,background:"linear-gradient(180deg,#1A0000 0%,#0F0000 100%)",borderRadius:"20px 20px 0 0",maxHeight:"88vh",overflowY:"auto",animation:"sheetUp 0.35s cubic-bezier(.4,0,.2,1)",border:"1px solid rgba(204,0,0,0.2)",borderBottom:"none"}} onClick={e=>e.stopPropagation()}>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"14px 20px 0",position:"sticky",top:0,background:"linear-gradient(180deg,#1A0000 0%,transparent 100%)",zIndex:10}}>
+          <div style={{width:40,height:4,background:"rgba(204,0,0,0.4)",borderRadius:2,margin:"0 auto"}}/>
+          <button onClick={onClose} style={{background:"rgba(255,255,255,0.07)",border:"1px solid rgba(255,255,255,0.12)",borderRadius:8,padding:"5px 14px",color:"rgba(255,255,255,0.5)",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>Salir ✕</button>
+        </div>
+
+        {!authed?(
+          <div style={{padding:"28px 28px 36px"}}>
+            <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:30,fontWeight:900,textTransform:"uppercase",marginBottom:4}}>Panel Admin</div>
+            <div style={{fontSize:13,color:"rgba(255,255,255,0.3)",marginBottom:24}}>Acceso exclusivo para entrenadores</div>
+            <input type="password" value={pass} onChange={e=>setPass(e.target.value)} placeholder="Contraseña..." onKeyDown={e=>e.key==="Enter"&&handleAuth()} style={{marginBottom:10}}/>
+            {err&&<div style={{fontSize:12,color:"#FF1744",marginBottom:12}}>{err}</div>}
+            <button onClick={handleAuth} style={{width:"100%",padding:"13px",background:"linear-gradient(90deg,#CC0000,#990000)",border:"none",borderRadius:8,color:"#fff",fontSize:15,fontWeight:800,letterSpacing:"0.05em",textTransform:"uppercase"}}>Acceder</button>
+          </div>
+        ):editingId?(
+          <div style={{padding:"22px 24px 40px"}}>
+            <button onClick={()=>setEditingId(null)} style={{background:"transparent",border:"none",color:RED,fontSize:13,fontWeight:700,padding:"0 0 16px",display:"flex",alignItems:"center",gap:6}}>← Volver</button>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:20}}>
+              <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:24,fontWeight:900}}>Editar Rider</div>
+              <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:32,fontWeight:900,color:scoreColor(avgVal)}}>{avgVal.toFixed(1)}</div>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,marginBottom:20}}>
+              <div><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:5}}>Nombre</div><input value={editName} onChange={e=>setEditName(e.target.value)}/></div>
+              <div><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:5}}>Edad</div><input value={editAge} onChange={e=>setEditAge(e.target.value)} placeholder="Edad"/></div>
+            </div>
+            <div style={{display:"flex",background:"rgba(0,0,0,0.4)",borderRadius:10,padding:4,marginBottom:20}}>
+              {[["edit","Editar última sesión"],["new","Nueva sesión"]].map(([k,l])=>(
+                <button key={k} onClick={()=>setScoreTab(k)} style={{flex:1,padding:"8px",borderRadius:7,border:"none",background:scoreTab===k?RED:"transparent",color:scoreTab===k?"#fff":"rgba(255,255,255,0.4)",fontSize:12,fontWeight:700,transition:"all 0.2s"}}>{l}</button>
+              ))}
+            </div>
+            <div style={{fontSize:11,color:RED,textTransform:"uppercase",letterSpacing:"0.15em",marginBottom:14}}>Puntuaciones</div>
+            <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"0 20px"}}>
+              {SKILLS.map(sk=>(
+                <div key={sk.id} style={{marginBottom:16}}>
+                  <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                    <span style={{fontSize:12,fontWeight:600}}>{sk.icon} {sk.label}</span>
+                    <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:900,color:scoreColor(editScores[sk.id]??5)}}>{editScores[sk.id]??5}</span>
+                  </div>
+                  <input type="range" min={1} max={10} step={1} value={editScores[sk.id]??5} style={{width:"100%",accentColor:RED,padding:0,border:"none",background:"transparent",height:20}} onChange={e=>setEditScores(p=>({...p,[sk.id]:parseInt(e.target.value)}))}/>
+                </div>
+              ))}
+            </div>
+            <div style={{marginBottom:20}}><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:5}}>Nota del entrenador</div><textarea value={editNote} onChange={e=>setEditNote(e.target.value)} style={{minHeight:54,resize:"vertical"}} placeholder="Observaciones..."/></div>
+
+            <div style={{fontSize:11,color:"#00C8FF",textTransform:"uppercase",letterSpacing:"0.15em",marginBottom:14}}>Resultados de Competición</div>
+            {SEASON_RACES.map(race=>(
+              <div key={race.id} style={{background:"rgba(0,0,0,0.3)",borderRadius:10,padding:"12px 14px",marginBottom:8,border:"1px solid rgba(255,255,255,0.05)"}}>
+                <div style={{fontSize:13,fontWeight:700,marginBottom:8}}>{race.icon} {race.name}</div>
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                  <span style={{fontSize:11,color:"rgba(255,255,255,0.4)"}}>Puntos:</span>
+                  <input type="number" min={0} max={race.points} value={editObjs[race.id]?.pts||0} onChange={e=>setEditObjs(p=>({...p,[race.id]:{...p[race.id],pts:parseInt(e.target.value)||0}}))} style={{width:80}}/>
+                  <span style={{fontSize:10,color:"rgba(255,255,255,0.3)"}}>/ {race.points} máx</span>
+                </div>
+                <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                  {race.objectives.map(obj=>{
+                    const checked=editObjs[race.id]?.objs?.includes(obj);
+                    return <button key={obj} onClick={()=>toggleObj(race.id,obj)} style={{fontSize:10,padding:"4px 10px",borderRadius:10,border:`1px solid ${checked?"#00E676":"rgba(255,255,255,0.1)"}`,background:checked?"rgba(0,230,118,0.15)":"transparent",color:checked?"#00E676":"rgba(255,255,255,0.4)",fontWeight:600}}>{checked?"✓ ":""}{obj}</button>;
+                  })}
+                </div>
+              </div>
+            ))}
+
+            <div style={{display:"flex",gap:10,marginTop:8}}>
+              <button onClick={saveEdit} style={{flex:2,padding:"13px",background:saved?"#00A857":"linear-gradient(90deg,#CC0000,#990000)",border:"none",borderRadius:8,color:"#fff",fontSize:14,fontWeight:800,textTransform:"uppercase",transition:"background 0.3s"}}>{saved?"✓ Guardado":"Guardar Cambios"}</button>
+              <button onClick={()=>deleteRider(editingId)} style={{flex:1,padding:"13px",background:"rgba(255,23,68,0.1)",border:"1px solid #FF1744",borderRadius:8,color:"#FF1744",fontSize:12,fontWeight:700}}>Eliminar</button>
+            </div>
+          </div>
+        ):(
+          <div style={{padding:"22px 24px 40px"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:18}}>
+              <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:26,fontWeight:900}}>Panel Admin</div>
+            </div>
+            <div style={{display:"flex",background:"rgba(0,0,0,0.4)",borderRadius:10,padding:4,marginBottom:20}}>
+              {["Editar Riders","Puntos Extra","Añadir Rider"].map((t,i)=>(
+                <button key={i} onClick={()=>setAdminTab(i)} style={{flex:1,padding:"8px",borderRadius:7,border:"none",background:adminTab===i?RED:"transparent",color:adminTab===i?"#fff":"rgba(255,255,255,0.4)",fontSize:12,fontWeight:700,transition:"all 0.2s"}}>{t}</button>
+              ))}
+            </div>
+            {adminTab===0&&GROUPS.map(g=>{
+              const gr=riders.filter(r=>r.groupId===g.id);
+              if(!gr.length)return null;
+              return (
+                <div key={g.id} style={{marginBottom:18}}>
+                  <div style={{fontSize:11,color:g.color,fontWeight:700,textTransform:"uppercase",letterSpacing:"0.14em",marginBottom:8,display:"flex",alignItems:"center",gap:6}}><div style={{width:8,height:8,borderRadius:"50%",background:g.color}}/>{g.name}</div>
+                  {gr.map(rider=>{
+                    const s=rider.sessions?.slice(-1)[0]?.scores,a=s?avgScore(s):null,pts=riderPoints(rider),lv=riderLevel(pts);
+                    return (
+                      <div key={rider.id} onClick={()=>openEdit(rider)}
+                        style={{display:"flex",alignItems:"center",gap:12,background:"rgba(0,0,0,0.35)",borderRadius:10,padding:"12px 14px",marginBottom:6,cursor:"pointer",border:`1px solid ${g.color}12`,transition:"background 0.15s"}}
+                        onMouseEnter={e=>e.currentTarget.style.background="rgba(204,0,0,0.1)"}
+                        onMouseLeave={e=>e.currentTarget.style.background="rgba(0,0,0,0.35)"}>
+                        <div style={{width:36,height:36,borderRadius:"50%",background:`${g.color}20`,border:`1.5px solid ${g.color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:900,color:g.color,fontFamily:"'Barlow Condensed',sans-serif",flexShrink:0}}>{rider.name[0]}</div>
+                        <div style={{flex:1}}>
+                          <div style={{fontSize:14,fontWeight:600}}>{rider.name}</div>
+                          <div style={{display:"flex",gap:6,marginTop:2}}>
+                            <span style={{fontSize:10,color:lv.color,fontWeight:700}}>{lv.name}</span>
+                            <span style={{fontSize:10,color:"rgba(255,255,255,0.25)"}}>{pts}pts · {rider.sessions?.length??0} ses.</span>
+                          </div>
+                        </div>
+                        {a!==null&&<span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:24,fontWeight:900,color:scoreColor(a)}}>{a.toFixed(1)}</span>}
+                        <button onClick={e=>{e.stopPropagation();deleteRider(rider.id);}} style={{background:"rgba(255,23,68,0.1)",border:"1px solid rgba(255,23,68,0.3)",borderRadius:6,color:"#FF1744",fontSize:12,fontWeight:700,padding:"4px 8px",flexShrink:0,cursor:"pointer"}} title="Eliminar rider">✕</button>
+                        <span style={{color:"rgba(255,255,255,0.2)",fontSize:16}}>›</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })}
+            {adminTab===1&&(
+              <div>
+                {/* Add bonus form */}
+                <div style={{background:"rgba(0,0,0,0.35)",borderRadius:12,padding:"20px",marginBottom:20,border:"1px solid rgba(255,215,0,0.15)"}}>
+                  <div style={{fontSize:11,color:"#FFD700",textTransform:"uppercase",letterSpacing:"0.15em",marginBottom:14,fontWeight:700}}>⭐ Añadir Puntos Extra</div>
+                  <div style={{marginBottom:12}}>
+                    <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:5}}>Rider</div>
+                    <select value={bonusRider} onChange={e=>setBonusRider(e.target.value)}>
+                      <option value="">— Selecciona un rider —</option>
+                      {GROUPS.map(g=>(
+                        <optgroup key={g.id} label={g.name}>
+                          {riders.filter(r=>r.groupId===g.id).map(r=>(
+                            <option key={r.id} value={r.id}>{r.name} ({riderPoints(r)} pts actuales)</option>
+                          ))}
+                        </optgroup>
+                      ))}
+                    </select>
+                  </div>
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 2fr",gap:10,marginBottom:14}}>
+                    <div>
+                      <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:5}}>Puntos</div>
+                      <input type="number" value={bonusPts} onChange={e=>setBonusPts(e.target.value)} placeholder="Ej: 100" style={{textAlign:"center",fontFamily:"'Barlow Condensed',sans-serif",fontSize:22,fontWeight:900,color:"#FFD700"}}/>
+                    </div>
+                    <div>
+                      <div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:5}}>Motivo (opcional)</div>
+                      <input value={bonusReason} onChange={e=>setBonusReason(e.target.value)} placeholder="Ej: Actitud en clase, reto superado..."/>
+                    </div>
+                  </div>
+                  {/* Quick amount buttons */}
+                  <div style={{display:"flex",gap:6,marginBottom:14,flexWrap:"wrap"}}>
+                    {[25,50,100,150,200,500].map(n=>(
+                      <button key={n} onClick={()=>setBonusPts(String(n))}
+                        style={{padding:"6px 14px",borderRadius:20,border:`1px solid ${bonusPts===String(n)?"#FFD700":"rgba(255,215,0,0.2)"}`,background:bonusPts===String(n)?"rgba(255,215,0,0.15)":"transparent",color:bonusPts===String(n)?"#FFD700":"rgba(255,255,255,0.4)",fontSize:12,fontWeight:700,transition:"all 0.15s"}}>
+                        +{n}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={addBonus} disabled={!bonusRider||!bonusPts}
+                    style={{width:"100%",padding:"12px",background:bonusSaved?"#00A857":(!bonusRider||!bonusPts)?"rgba(255,255,255,0.05)":"linear-gradient(90deg,#FFD700,#FFA000)",border:"none",borderRadius:8,color:bonusSaved||(!bonusRider||!bonusPts)?"rgba(255,255,255,0.4)":"#000",fontSize:14,fontWeight:800,textTransform:"uppercase",letterSpacing:"0.05em",transition:"all 0.3s",cursor:(!bonusRider||!bonusPts)?"not-allowed":"pointer"}}>
+                    {bonusSaved?"✓ Puntos Añadidos":(!bonusRider||!bonusPts)?"Selecciona rider y puntos":"⭐ Sumar Puntos"}
+                  </button>
+                </div>
+
+                {/* History of bonus points per rider */}
+                <div style={{fontSize:11,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"0.12em",marginBottom:12}}>Historial de puntos extra</div>
+                {riders.filter(r=>(r.bonusPoints||[]).length>0).length===0&&(
+                  <div style={{textAlign:"center",padding:"24px",color:"rgba(255,255,255,0.2)",fontSize:13}}>Aún no hay puntos extra registrados</div>
+                )}
+                {riders.filter(r=>(r.bonusPoints||[]).length>0).map(rider=>{
+                  const g=GROUPS.find(gr=>gr.id===rider.groupId);
+                  const total=(rider.bonusPoints||[]).reduce((s,b)=>s+b.pts,0);
+                  return (
+                    <div key={rider.id} style={{background:"rgba(0,0,0,0.3)",borderRadius:10,padding:"14px",marginBottom:10,border:`1px solid ${g.color}15`}}>
+                      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                        <div style={{width:32,height:32,borderRadius:"50%",background:`${g.color}20`,border:`1.5px solid ${g.color}40`,display:"flex",alignItems:"center",justifyContent:"center",fontSize:13,fontWeight:900,color:g.color,fontFamily:"'Barlow Condensed',sans-serif",flexShrink:0}}>{rider.name[0]}</div>
+                        <div style={{flex:1}}><div style={{fontSize:14,fontWeight:700}}>{rider.name}</div><div style={{fontSize:11,color:g.color}}>{g.name}</div></div>
+                        <div style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:20,fontWeight:900,color:"#FFD700"}}>+{total} pts</div>
+                      </div>
+                      {[...(rider.bonusPoints||[])].reverse().map(b=>(
+                        <div key={b.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 0",borderTop:"1px solid rgba(255,255,255,0.04)"}}>
+                          <span style={{fontFamily:"'Barlow Condensed',sans-serif",fontSize:18,fontWeight:900,color:"#FFD700",minWidth:48}}>+{b.pts}</span>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:12,fontWeight:600,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{b.reason}</div>
+                            <div style={{fontSize:10,color:"rgba(255,255,255,0.25)"}}>{b.date}</div>
+                          </div>
+                          <button onClick={()=>removeBonus(rider.id,b.id)} style={{background:"transparent",border:"none",color:"rgba(255,68,68,0.5)",fontSize:16,padding:"0 4px",lineHeight:1,flexShrink:0}} title="Eliminar">×</button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            {adminTab===2&&(
+              <div>
+                <div style={{marginBottom:12}}><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:5}}>Nombre</div><input value={newName} onChange={e=>setNewName(e.target.value)} placeholder="Nombre del rider"/></div>
+                <div style={{marginBottom:12}}><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:5}}>Año de nacimiento</div><select value={newBirthYear} onChange={e=>setNewBirthYear(e.target.value)}><option value="">— Seleccionar —</option>{Array.from({length:40},(_,i)=>new Date().getFullYear()-2-i).map(y=><option key={y} value={y}>{y} ({new Date().getFullYear()-y} años)</option>)}</select></div>
+                <div style={{marginBottom:22}}><div style={{fontSize:10,color:"rgba(255,255,255,0.35)",textTransform:"uppercase",letterSpacing:"0.1em",marginBottom:5}}>Grupo</div><select value={newGroup} onChange={e=>setNewGroup(e.target.value)}>{GROUPS.map(g=><option key={g.id} value={g.id}>{g.name} ({g.age} años)</option>)}</select></div>
+                <button onClick={addRider} style={{width:"100%",padding:"13px",background:saved?"#00A857":"linear-gradient(90deg,#CC0000,#990000)",border:"none",borderRadius:8,color:"#fff",fontSize:14,fontWeight:800,textTransform:"uppercase",transition:"background 0.3s"}}>{saved?"✓ Rider Añadido":"Añadir Rider"}</button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
